@@ -1,129 +1,142 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AndroidDevice, LogEntry, WsServerMessage } from '../../src/shared/types'
-import { Api } from './api'
-import { DeviceCard } from './components/DeviceCard'
-import { QuickControls } from './components/QuickControls'
-import { LogPanel } from './components/LogPanel'
-import { ScreenshotModal } from './components/ScreenshotModal'
-import { AppsModal } from './components/AppsModal'
+import { useCallback, useEffect, useRef, useState } from "react";
+import type {
+  AndroidDevice,
+  LogEntry,
+  WsServerMessage,
+} from "../../src/shared/types";
+import { Api } from "./api";
+import { DeviceCard } from "./components/DeviceCard";
+import { QuickControls } from "./components/QuickControls";
+import { LogPanel } from "./components/LogPanel";
+import { ScreenshotModal } from "./components/ScreenshotModal";
+import { AppsModal } from "./components/AppsModal";
 
 export function App() {
-  const [devices, setDevices] = useState<AndroidDevice[]>([])
-  const [logs, setLogs] = useState<LogEntry[]>([])
-  const [selectedSerial, setSelectedSerial] = useState<string | null>(null)
-  const [screenshot, setScreenshot] = useState<{ file: string; dataUrl: string } | null>(null)
+  const [devices, setDevices] = useState<AndroidDevice[]>([]);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [selectedSerial, setSelectedSerial] = useState<string | null>(null);
+  const [screenshot, setScreenshot] = useState<{
+    file: string;
+    dataUrl: string;
+  } | null>(null);
   const [appsState, setAppsState] = useState<{
-    open: boolean
-    loading: boolean
-    items: string[]
-  }>({ open: false, loading: false, items: [] })
-  const [scrcpyRunning, setScrcpyRunning] = useState<Record<string, boolean>>({})
-  const [error, setError] = useState<string | null>(null)
-  const errorTimer = useRef<number | undefined>(undefined)
+    open: boolean;
+    loading: boolean;
+    items: string[];
+  }>({ open: false, loading: false, items: [] });
+  const [scrcpyRunning, setScrcpyRunning] = useState<Record<string, boolean>>(
+    {},
+  );
+  const [error, setError] = useState<string | null>(null);
+  const errorTimer = useRef<number | undefined>(undefined);
 
   const showError = useCallback((message: string) => {
-    setError(message)
-    window.clearTimeout(errorTimer.current)
-    errorTimer.current = window.setTimeout(() => setError(null), 7000)
-  }, [])
+    setError(message);
+    window.clearTimeout(errorTimer.current);
+    errorTimer.current = window.setTimeout(() => setError(null), 7000);
+  }, []);
 
   /** Wrappa le azioni: qualunque errore finisce nel banner, mai in console silenzioso. */
   const run = useCallback(
     async (fn: () => Promise<void>): Promise<void> => {
       try {
-        await fn()
+        await fn();
       } catch (err) {
-        showError(err instanceof Error ? err.message : String(err))
+        showError(err instanceof Error ? err.message : String(err));
       }
     },
     [showError],
-  )
+  );
 
   // Connessione WS + stato iniziale (con riconnessione automatica)
   useEffect(() => {
-    let disposed = false
-    let ws: WebSocket | null = null
+    let disposed = false;
+    let ws: WebSocket | null = null;
 
     const handleMessage = (raw: MessageEvent) => {
-      let msg: WsServerMessage
+      let msg: WsServerMessage;
       try {
-        msg = JSON.parse(raw.data as string) as WsServerMessage
+        msg = JSON.parse(raw.data as string) as WsServerMessage;
       } catch {
-        return
+        return;
       }
-      if (msg.type === 'devices') setDevices(msg.devices)
-      else if (msg.type === 'log') setLogs((prev) => [...prev.slice(-199), msg.entry])
-      else if (msg.type === 'scrcpy')
-        setScrcpyRunning((prev) => ({ ...prev, [msg.serial]: msg.status === 'running' }))
-    }
+      if (msg.type === "devices") setDevices(msg.devices);
+      else if (msg.type === "log")
+        setLogs((prev) => [...prev.slice(-199), msg.entry]);
+      else if (msg.type === "scrcpy")
+        setScrcpyRunning((prev) => ({
+          ...prev,
+          [msg.serial]: msg.status === "running",
+        }));
+    };
 
     const connect = () => {
-      if (disposed) return
-      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      ws = new WebSocket(`${proto}//${window.location.host}/ws`)
-      ws.onmessage = handleMessage
+      if (disposed) return;
+      const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+      ws = new WebSocket(`${proto}//${window.location.host}/ws`);
+      ws.onmessage = handleMessage;
       ws.onclose = () => {
-        if (!disposed) window.setTimeout(connect, 3000)
-      }
-    }
-    connect()
+        if (!disposed) window.setTimeout(connect, 3000);
+      };
+    };
+    connect();
 
     Api.devices()
       .then(setDevices)
-      .catch((e: Error) => showError(e.message))
+      .catch((e: Error) => showError(e.message));
     Api.logs()
       .then(setLogs)
-      .catch(() => {})
+      .catch(() => {});
 
     return () => {
-      disposed = true
-      ws?.close()
-    }
-  }, [showError])
+      disposed = true;
+      ws?.close();
+    };
+  }, [showError]);
 
   // Auto-selezione del dispositivo (prima connessione o device scomparso)
   useEffect(() => {
     if (devices.length === 0) {
-      setSelectedSerial(null)
-      return
+      setSelectedSerial(null);
+      return;
     }
     if (!selectedSerial || !devices.some((d) => d.serial === selectedSerial)) {
-      setSelectedSerial(devices[0]?.serial ?? null)
+      setSelectedSerial(devices[0]?.serial ?? null);
     }
-  }, [devices, selectedSerial])
+  }, [devices, selectedSerial]);
 
-  const device = devices.find((d) => d.serial === selectedSerial) ?? null
-  const authorized = device?.authorized === true
+  const device = devices.find((d) => d.serial === selectedSerial) ?? null;
+  const authorized = device?.authorized === true;
 
   const actions = {
     startMirroring: () =>
       run(async () => {
-        if (!device) return
-        await Api.scrcpyStart(device.serial)
+        if (!device) return;
+        await Api.scrcpyStart(device.serial);
       }),
     screenshot: () =>
       run(async () => {
-        if (!device) return
-        setScreenshot(await Api.screenshot(device.serial))
+        if (!device) return;
+        setScreenshot(await Api.screenshot(device.serial));
       }),
     openApps: () =>
       run(async () => {
-        if (!device) return
-        setAppsState((s) => ({ ...s, open: true, loading: true }))
-        const { packages } = await Api.apps(device.serial)
-        setAppsState({ open: true, loading: false, items: packages })
+        if (!device) return;
+        setAppsState((s) => ({ ...s, open: true, loading: true }));
+        const { packages } = await Api.apps(device.serial);
+        setAppsState({ open: true, loading: false, items: packages });
       }),
     restartAdb: () =>
       run(async () => {
-        await Api.adbRestart()
+        await Api.adbRestart();
       }),
     launchApp: (pkg: string) =>
       run(async () => {
-        if (!device) return
-        await Api.launchApp(device.serial, pkg)
-        setAppsState((s) => ({ ...s, open: false }))
+        if (!device) return;
+        await Api.launchApp(device.serial, pkg);
+        setAppsState((s) => ({ ...s, open: false }));
       }),
-  }
+  };
 
   return (
     <div className="app">
@@ -145,8 +158,9 @@ export function App() {
               <strong>Nessun dispositivo collegato.</strong>
             </p>
             <p>
-              Collega il Samsung via USB (debug USB attivo), sblocca lo schermo e attendi qualche
-              secondo. In caso di problemi esegui <code>npm run doctor</code>.
+              Collega il Samsung via USB (debug USB attivo), sblocca lo schermo
+              e attendi qualche secondo. In caso di problemi esegui{" "}
+              <code>npm run doctor</code>.
             </p>
           </div>
         ) : (
@@ -166,13 +180,25 @@ export function App() {
           <section className="panel">
             <h2>DEVICE</h2>
             <div className="button-grid">
-              <button className="btn primary" onClick={actions.startMirroring} disabled={!authorized}>
+              <button
+                className="btn primary"
+                onClick={actions.startMirroring}
+                disabled={!authorized}
+              >
                 ▶ Avvia mirroring
               </button>
-              <button className="btn" onClick={actions.screenshot} disabled={!authorized}>
+              <button
+                className="btn"
+                onClick={actions.screenshot}
+                disabled={!authorized}
+              >
                 📷 Screenshot
               </button>
-              <button className="btn" onClick={actions.openApps} disabled={!authorized}>
+              <button
+                className="btn"
+                onClick={actions.openApps}
+                disabled={!authorized}
+              >
                 📱 Elenco app
               </button>
               <button className="btn warn" onClick={actions.restartAdb}>
@@ -181,7 +207,8 @@ export function App() {
             </div>
             {scrcpyRunning[device.serial] && (
               <p className="scrcpy-status">
-                Mirroring scrcpy attivo — chiudi la finestra scrcpy per terminarlo.
+                Mirroring scrcpy attivo — chiudi la finestra scrcpy per
+                terminarlo.
               </p>
             )}
           </section>
@@ -198,7 +225,12 @@ export function App() {
 
       <LogPanel logs={logs} />
 
-      {screenshot && <ScreenshotModal shot={screenshot} onClose={() => setScreenshot(null)} />}
+      {screenshot && (
+        <ScreenshotModal
+          shot={screenshot}
+          onClose={() => setScreenshot(null)}
+        />
+      )}
 
       {appsState.open && (
         <AppsModal
@@ -209,5 +241,5 @@ export function App() {
         />
       )}
     </div>
-  )
+  );
 }

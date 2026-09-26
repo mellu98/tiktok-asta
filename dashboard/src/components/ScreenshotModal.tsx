@@ -1,8 +1,8 @@
-import type { ScreenshotResult } from '../../../src/shared/types'
+import type { ScreenshotResult } from "../../../src/shared/types";
 
 interface Props {
-  shot: ScreenshotResult
-  onClose: () => void
+  shot: ScreenshotResult;
+  onClose: () => void;
 }
 
 export function ScreenshotModal({ shot, onClose }: Props) {
@@ -15,14 +15,21 @@ export function ScreenshotModal({ shot, onClose }: Props) {
             ✕ Chiudi
           </button>
         </div>
-        <img className="shot" src={shot.dataUrl} alt="Screenshot del dispositivo" />
+        <img
+          className="shot"
+          src={shot.dataUrl}
+          alt="Screenshot del dispositivo"
+        />
         <p className="note">
-          Salvato in <code>{shot.file}</code> ·{' '}
-          <a href={shot.dataUrl} download={shot.file.split('/').pop() ?? 'screenshot.png'}>
+          Salvato in <code>{shot.file}</code> ·{" "}
+          <a
+            href={shot.dataUrl}
+            download={shot.file.split("/").pop() ?? "screenshot.png"}
+          >
             Scarica PNG
           </a>
         </p>
       </div>
     </div>
-  )
+  );
 }

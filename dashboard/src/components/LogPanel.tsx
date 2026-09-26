@@ -1,18 +1,18 @@
-import { useEffect, useRef } from 'react'
-import type { LogEntry } from '../../../src/shared/types'
+import { useEffect, useRef } from "react";
+import type { LogEntry } from "../../../src/shared/types";
 
 function time(ts: number): string {
-  return new Date(ts).toLocaleTimeString('it-IT', { hour12: false })
+  return new Date(ts).toLocaleTimeString("it-IT", { hour12: false });
 }
 
 export function LogPanel({ logs }: { logs: LogEntry[] }) {
-  const boxRef = useRef<HTMLDivElement>(null)
+  const boxRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll verso il log più recente
   useEffect(() => {
-    const el = boxRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [logs])
+    const el = boxRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [logs]);
 
   return (
     <section className="panel">
@@ -31,5 +31,5 @@ export function LogPanel({ logs }: { logs: LogEntry[] }) {
         )}
       </div>
     </section>
-  )
+  );
 }

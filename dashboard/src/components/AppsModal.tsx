@@ -1,19 +1,19 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState } from "react";
 
 interface Props {
-  loading: boolean
-  items: string[]
-  onLaunch: (pkg: string) => void
-  onClose: () => void
+  loading: boolean;
+  items: string[];
+  onLaunch: (pkg: string) => void;
+  onClose: () => void;
 }
 
 export function AppsModal({ loading, items, onLaunch, onClose }: Props) {
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState("");
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return q ? items.filter((p) => p.toLowerCase().includes(q)) : items
-  }, [items, query])
+    const q = query.trim().toLowerCase();
+    return q ? items.filter((p) => p.toLowerCase().includes(q)) : items;
+  }, [items, query]);
 
   return (
     <div className="overlay" onClick={onClose} role="dialog" aria-modal="true">
@@ -50,5 +50,5 @@ export function AppsModal({ loading, items, onLaunch, onClose }: Props) {
         </div>
       </div>
     </div>
-  )
+  );
 }
