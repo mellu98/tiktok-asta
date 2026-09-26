@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: macos-14
+    steps:
+      # actions/checkout v4.2.2 (SHA-pinned, senza persistenza credenziali)
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      # actions/setup-node v4.1.0 (SHA-pinned)
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck (server + dashboard)
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test (unit, no device richiesto)
+        run: npm test
+
+      - name: Build dashboard
+        run: npm run build
