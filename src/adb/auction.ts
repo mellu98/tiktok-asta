@@ -1,9 +1,9 @@
 import type { ClickOfferResult, UiNode } from "../shared/types";
 import { tap } from "./commands";
-import { execAdbBinary, execAdbText } from "./client";
+import { dumpUiHierarchy } from "./ui-dump";
 
 /**
- * Diagnostica asta TikTok via uiautomator nativo Android.
+ * Diagnostica asta TikTok via albero UI nativo Android (vedi ./ui-dump).
  *
  * Nessun selettore TikTok hardcodato: l'albero UI viene estratto, parsato e
  * cercato per KEYWORD TESTUALI (Offri, offerta, €, prezzo…). I selettori
@@ -14,43 +14,9 @@ import { execAdbBinary, execAdbText } from "./client";
  * nessuna shell) → nessuna superficie di injection.
  */
 
-const DUMP_PATH = "/sdcard/window.xml";
-const DUMP_TIMEOUT_MS = 20000; // uiautomator può metterci parecchi secondi
-const TAP_SETTLE_MS = 2000;
+export { dumpUiHierarchy };
 
-/** Esegue `uiautomator dump` e legge l'XML. Un solo retry se la UI non è idle. */
-export async function dumpUiHierarchy(serial: string): Promise<string> {
-  let lastError: Error | null = null;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const out = await execAdbText(
-      ["-s", serial, "shell", "uiautomator", "dump", DUMP_PATH],
-      { timeoutMs: DUMP_TIMEOUT_MS },
-    );
-    // Nota: il messaggio di successo di Android contiene il typo "hierchary"
-    if (/dumped to/i.test(out)) {
-      const xml = await execAdbBinary(
-        ["-s", serial, "exec-out", "cat", DUMP_PATH],
-        { timeoutMs: DUMP_TIMEOUT_MS },
-      );
-      const text = xml.toString("utf8");
-      if (text.includes("<node")) return text;
-      lastError = new Error(
-        "L'XML letto dal dispositivo non contiene nodi UI — riprova a schermo acceso e stabile",
-      );
-    } else if (/ERROR/i.test(out)) {
-      // Tipico: "ERROR: could not get idle state." (UI in transizione)
-      lastError = new Error(
-        `uiautomator non riesce a leggere la UI (schermata in movimento o non idle). Dettaglio: ${out.trim().slice(0, 200)}`,
-      );
-    } else {
-      lastError = new Error(
-        `uiautomator dump: risposta inattesa: ${out.trim().slice(0, 200)}`,
-      );
-    }
-    await sleep(1500);
-  }
-  throw lastError ?? new Error("uiautomator dump non riuscito");
-}
+const TAP_SETTLE_MS = 2000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

@@ -111,6 +111,11 @@ fn main() {
                     "POC_UI_DUMP_DIR",
                     data_dir.join("ui-dumps").to_string_lossy().into_owned(),
                 )
+                // Lettore UI senza idle (jar dex): se manca, il server ripiega su uiautomator
+                .env(
+                    "POC_UI_DUMPER_JAR",
+                    tools.join("ui-dump.jar").to_string_lossy().into_owned(),
+                )
                 .env("POC_LOG_DIR", log_dir.to_string_lossy().into_owned())
                 .env("POC_PARENT_WATCHDOG", "1")
                 // scrcpy individua adb dal PATH: aggiungiamo la cartella tool

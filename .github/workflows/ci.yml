@@ -34,3 +34,8 @@ jobs:
 
       - name: Build dashboard
         run: npm run build
+
+      # Stesso toolchain della release (JDK + Android build-tools del runner):
+      # un errore di javac/D8 deve emergere sulla PR, non al momento del tag
+      - name: Build lettore UI senza idle (javac + D8)
+        run: bash scripts/build-ui-dumper.sh
