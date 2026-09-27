@@ -2,10 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, beforeEach } from "vitest";
-import {
-  evaluateOfferButton,
-  scoreOfferButton,
-} from "../src/auction/button";
+import { evaluateOfferButton, scoreOfferButton } from "../src/auction/button";
 import { estimateNextBid, parseAmountEur } from "../src/auction/price";
 import { loadConfig, sanitizeConfig } from "../src/auction/config";
 import {
@@ -28,7 +25,12 @@ function mk(
   order: number,
   text: string,
   bounds: [number, number, number, number],
-  opts: { clickable?: boolean; enabled?: boolean; contentDesc?: string; className?: string } = {},
+  opts: {
+    clickable?: boolean;
+    enabled?: boolean;
+    contentDesc?: string;
+    className?: string;
+  } = {},
 ): UiNode {
   return {
     text,

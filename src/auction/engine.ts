@@ -146,154 +146,171 @@ export async function runRound(
   };
 
   // Lock per device: se un round è già in corso, rifiuta senza accodare.
-  const locked = await withDeviceLock(serial, async (): Promise<RoundResult> => {
-    // ── 1. ACQUISIZIONE ────────────────────────────────────────────────
-    let xml = "";
-    try {
-      const t = now();
-      xml = await dumpUiHierarchy(serial);
-      timings.dumpMs = Math.round(now() - t);
-    } catch (err) {
-      base.error = err instanceof Error ? err.message : String(err);
-      return skipResult(base, "dump UI non riuscito", "evaluate");
-    }
-    base.xmlFile = saveXmlDump(serial, xml);
-
-    // ── 2. RICONOSCIMENTO ──────────────────────────────────────────────
-    const tParse = now();
-    const nodes: UiNode[] = parseUiHierarchy(xml);
-    const button = evaluateOfferButton(nodes, config.confidenceThreshold);
-    const offerNode: UiNode | null = button.node;
-    const price = estimateNextBid(
-      nodes,
-      offerNode,
-      config.priceConfidenceThreshold,
-    );
-    timings.parseMs = Math.round(now() - tParse);
-
-    base.buttonScore = offerNode ? button.score : null;
-    base.buttonLabel = offerNode
-      ? (offerNode.text || offerNode.contentDesc || null)
-      : null;
-    base.buttonCenter = offerNode ? offerNode.center : null;
-    base.priceEur = price ? price.amountEur : null;
-    base.priceConfidence = price ? price.confidence : null;
-
-    // ── 3. DECISIONE (fail-closed, in ordine di severità) ──────────────
-    const tDecide = now();
-    const auctionId = computeAuctionId(
-      uiSignature(nodes),
-      price ? [price.amountEur] : [],
-    );
-    base.auctionId = auctionId;
-    base.offersSpent = getOffersSpent(auctionId);
-
-    let proceed = true;
-    let reason = "";
-
-    if (isEmergencyStopped()) {
-      proceed = false;
-      reason = "ARRESTO DI EMERGENZA attivo — riarmare dall'interfaccia";
-    } else if (!offerNode) {
-      proceed = false;
-      reason = "pulsante Offri non individuato con confidenza sufficiente";
-    } else if (button.score < config.confidenceThreshold) {
-      proceed = false;
-      reason = `punteggio pulsante ${button.score} sotto soglia ${config.confidenceThreshold}`;
-    } else if (!price || price.confidence < config.priceConfidenceThreshold) {
-      proceed = false;
-      reason = "prezzo non leggibile con affidabilità sufficiente";
-    } else if (price.amountEur > config.maxBidEur) {
-      proceed = false;
-      reason = `prezzo ${price.amountEur}€ sopra il massimo consentito ${config.maxBidEur}€`;
-    } else if (base.offersSpent >= config.maxOffersPerAuction) {
-      proceed = false;
-      reason = `numero massimo di offerte per asta raggiunto (${base.offersSpent}/${config.maxOffersPerAuction})`;
-    }
-
-    timings.decideMs = Math.round(now() - tDecide);
-    if (!proceed) {
-      return skipResult(base, reason, mode === "evaluate" ? "evaluate" : "dry");
-    }
-
-    // Da qui in poi: condizioni OK. Il tap reale avviene SOLO in mode "live"
-    // E con dry-run disattivato in configurazione (doppia conferma).
-    if (mode !== "live" || config.dryRun) {
-      base.decision = "offer";
-      base.reason =
-        mode !== "live"
-          ? "condizioni soddisfatte (valutazione, nessun tap)"
-          : "condizioni soddisfatte — dry-run attivo in configurazione, nessun tap";
-      appendJournal(toJournal(base, mode === "evaluate" ? "evaluate" : "dry", null, null, timings));
-      return base;
-    }
-
-    // ── 4. TAP REALE (uno solo) ────────────────────────────────────────
-    if (!offerNode) {
-      // Difesa in profondità: irraggiungibile dopo le guardie sopra.
-      timings.decideMs = timings.decideMs ?? 0;
-      return skipResult(base, "stato interno incoerente (pulsante assente)", "evaluate");
-    }
-    const center = offerNode.center;
-    let tapError: string | null = null;
-    const tTap = now();
-    try {
+  const locked = await withDeviceLock(
+    serial,
+    async (): Promise<RoundResult> => {
+      // ── 1. ACQUISIZIONE ────────────────────────────────────────────────
+      let xml = "";
       try {
-        await runInShellSession(serial, `input tap ${center.x} ${center.y}`);
-      } catch {
-        // fallback: percorso classico (spawn adb dedicato)
-        await adbTap(serial, center.x, center.y);
+        const t = now();
+        xml = await dumpUiHierarchy(serial);
+        timings.dumpMs = Math.round(now() - t);
+      } catch (err) {
+        base.error = err instanceof Error ? err.message : String(err);
+        return skipResult(base, "dump UI non riuscito", "evaluate");
       }
-      timings.tapMs = Math.round(now() - tTap);
-    } catch (err) {
-      timings.tapMs = Math.round(now() - tTap);
-      tapError = err instanceof Error ? err.message : String(err);
-    }
+      base.xmlFile = saveXmlDump(serial, xml);
 
-    let uiChanged: boolean | null = null;
+      // ── 2. RICONOSCIMENTO ──────────────────────────────────────────────
+      const tParse = now();
+      const nodes: UiNode[] = parseUiHierarchy(xml);
+      const button = evaluateOfferButton(nodes, config.confidenceThreshold);
+      const offerNode: UiNode | null = button.node;
+      const price = estimateNextBid(
+        nodes,
+        offerNode,
+        config.priceConfidenceThreshold,
+      );
+      timings.parseMs = Math.round(now() - tParse);
 
-    if (tapError === null) {
-      // Fail-closed: il tap è stato inviato → conta come spesa anche se la
-      // verifica resta ambigua.
-      recordOfferSpent(auctionId);
+      base.buttonScore = offerNode ? button.score : null;
+      base.buttonLabel = offerNode
+        ? offerNode.text || offerNode.contentDesc || null
+        : null;
+      base.buttonCenter = offerNode ? offerNode.center : null;
+      base.priceEur = price ? price.amountEur : null;
+      base.priceConfidence = price ? price.confidence : null;
+
+      // ── 3. DECISIONE (fail-closed, in ordine di severità) ──────────────
+      const tDecide = now();
+      const auctionId = computeAuctionId(
+        uiSignature(nodes),
+        price ? [price.amountEur] : [],
+      );
+      base.auctionId = auctionId;
       base.offersSpent = getOffersSpent(auctionId);
 
-      await sleep(TAP_SETTLE_MS);
-      const tVerify = now();
-      try {
-        const xmlAfter = await dumpUiHierarchy(serial);
-        const afterNodes = parseUiHierarchy(xmlAfter);
-        uiChanged = uiSignature(afterNodes) !== uiSignature(nodes);
-        timings.verifyMs = Math.round(now() - tVerify);
-      } catch {
-        timings.verifyMs = Math.round(now() - tVerify);
+      let proceed = true;
+      let reason = "";
+
+      if (isEmergencyStopped()) {
+        proceed = false;
+        reason = "ARRESTO DI EMERGENZA attivo — riarmare dall'interfaccia";
+      } else if (!offerNode) {
+        proceed = false;
+        reason = "pulsante Offri non individuato con confidenza sufficiente";
+      } else if (button.score < config.confidenceThreshold) {
+        proceed = false;
+        reason = `punteggio pulsante ${button.score} sotto soglia ${config.confidenceThreshold}`;
+      } else if (!price || price.confidence < config.priceConfidenceThreshold) {
+        proceed = false;
+        reason = "prezzo non leggibile con affidabilità sufficiente";
+      } else if (price.amountEur > config.maxBidEur) {
+        proceed = false;
+        reason = `prezzo ${price.amountEur}€ sopra il massimo consentito ${config.maxBidEur}€`;
+      } else if (base.offersSpent >= config.maxOffersPerAuction) {
+        proceed = false;
+        reason = `numero massimo di offerte per asta raggiunto (${base.offersSpent}/${config.maxOffersPerAuction})`;
       }
-    }
 
-    try {
-      const shot = await captureAndSave(serial);
-      base.screenshotFile = shot.file;
-    } catch {
-      // screenshot non critico per la decisione
-    }
+      timings.decideMs = Math.round(now() - tDecide);
+      if (!proceed) {
+        return skipResult(
+          base,
+          reason,
+          mode === "evaluate" ? "evaluate" : "dry",
+        );
+      }
 
-    base.decision = tapError === null ? "offer" : "skip";
-    base.uiChangedAfterTap = uiChanged;
-    base.error = tapError;
-    base.reason =
-      tapError !== null
-        ? `errore durante il tap: ${tapError}`
-        : uiChanged === true
-          ? "tap eseguito — UI cambiata"
-          : uiChanged === false
-            ? "tap eseguito — UI invariata (verificare manualmente)"
-            : "tap eseguito — verifica UI non disponibile";
+      // Da qui in poi: condizioni OK. Il tap reale avviene SOLO in mode "live"
+      // E con dry-run disattivato in configurazione (doppia conferma).
+      if (mode !== "live" || config.dryRun) {
+        base.decision = "offer";
+        base.reason =
+          mode !== "live"
+            ? "condizioni soddisfatte (valutazione, nessun tap)"
+            : "condizioni soddisfatte — dry-run attivo in configurazione, nessun tap";
+        appendJournal(
+          toJournal(
+            base,
+            mode === "evaluate" ? "evaluate" : "dry",
+            null,
+            null,
+            timings,
+          ),
+        );
+        return base;
+      }
 
-    appendJournal(
-      toJournal(base, "offer", tapError, uiChanged, timings),
-    );
-    return base;
-  });
+      // ── 4. TAP REALE (uno solo) ────────────────────────────────────────
+      if (!offerNode) {
+        // Difesa in profondità: irraggiungibile dopo le guardie sopra.
+        timings.decideMs = timings.decideMs ?? 0;
+        return skipResult(
+          base,
+          "stato interno incoerente (pulsante assente)",
+          "evaluate",
+        );
+      }
+      const center = offerNode.center;
+      let tapError: string | null = null;
+      const tTap = now();
+      try {
+        try {
+          await runInShellSession(serial, `input tap ${center.x} ${center.y}`);
+        } catch {
+          // fallback: percorso classico (spawn adb dedicato)
+          await adbTap(serial, center.x, center.y);
+        }
+        timings.tapMs = Math.round(now() - tTap);
+      } catch (err) {
+        timings.tapMs = Math.round(now() - tTap);
+        tapError = err instanceof Error ? err.message : String(err);
+      }
+
+      let uiChanged: boolean | null = null;
+
+      if (tapError === null) {
+        // Fail-closed: il tap è stato inviato → conta come spesa anche se la
+        // verifica resta ambigua.
+        recordOfferSpent(auctionId);
+        base.offersSpent = getOffersSpent(auctionId);
+
+        await sleep(TAP_SETTLE_MS);
+        const tVerify = now();
+        try {
+          const xmlAfter = await dumpUiHierarchy(serial);
+          const afterNodes = parseUiHierarchy(xmlAfter);
+          uiChanged = uiSignature(afterNodes) !== uiSignature(nodes);
+          timings.verifyMs = Math.round(now() - tVerify);
+        } catch {
+          timings.verifyMs = Math.round(now() - tVerify);
+        }
+      }
+
+      try {
+        const shot = await captureAndSave(serial);
+        base.screenshotFile = shot.file;
+      } catch {
+        // screenshot non critico per la decisione
+      }
+
+      base.decision = tapError === null ? "offer" : "skip";
+      base.uiChangedAfterTap = uiChanged;
+      base.error = tapError;
+      base.reason =
+        tapError !== null
+          ? `errore durante il tap: ${tapError}`
+          : uiChanged === true
+            ? "tap eseguito — UI cambiata"
+            : uiChanged === false
+              ? "tap eseguito — UI invariata (verificare manualmente)"
+              : "tap eseguito — verifica UI non disponibile";
+
+      appendJournal(toJournal(base, "offer", tapError, uiChanged, timings));
+      return base;
+    },
+  );
 
   // Lock occupato: un round è già in volo per questo device.
   return (

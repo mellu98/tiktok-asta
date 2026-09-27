@@ -10,10 +10,7 @@ import { closeAllShellSessions } from "../adb/shell-session";
 import { buildRouter } from "./routes";
 import { activityLog } from "./logging";
 import { WsHub } from "./ws";
-import {
-  setDataDir,
-  logsDir,
-} from "../auction/base-dir";
+import { setDataDir, logsDir } from "../auction/base-dir";
 import { setConfigBaseDir } from "../auction/config";
 import { setSafetyBaseDir } from "../auction/safety";
 import { setStateBaseDir } from "../auction/state";

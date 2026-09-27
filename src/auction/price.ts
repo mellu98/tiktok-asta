@@ -13,14 +13,15 @@ import type { UiNode } from "../shared/types";
  * Importi riconosciuti: "1.234 €", "1234 euro", "€ 500", "12,50 €", "999€",
  * anche senza simbolo se il nodo è adiacente a parole di asta (chiamante).
  */
-const AMOUNT_RE = /(?:\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?|\d+(?:[.,]\d{2}))\s*(?:€|eur\b)|€\s*\d(?:\d|,\d{3})*(?:[.,]\d{2})?/gi;
+const AMOUNT_RE =
+  /(?:\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?|\d+(?:[.,]\d{2}))\s*(?:€|eur\b)|€\s*\d(?:\d|,\d{3})*(?:[.,]\d{2})?/gi;
 
 export interface PriceCandidate {
   /** Valore numerico normalizzato in euro (Number). */
-  amountEur: number
+  amountEur: number;
   /** Testo originale del nodo. */
-  raw: string
-  node: UiNode
+  raw: string;
+  node: UiNode;
 }
 
 /** Parsing di un importo italiano → euro. Ritorna null se non interpretabile. */
@@ -66,10 +67,10 @@ export function extractPriceCandidates(nodes: UiNode[]): PriceCandidate[] {
 }
 
 export interface PriceEstimate {
-  amountEur: number
-  confidence: number
-  candidates: PriceCandidate[]
-  reason: string
+  amountEur: number;
+  confidence: number;
+  candidates: PriceCandidate[];
+  reason: string;
 }
 
 /**
@@ -93,7 +94,9 @@ export function estimateNextBid(
 
   const maxAmount = Math.max(...candidates.map((c) => c.amountEur));
   const topCandidates = candidates.filter((c) => c.amountEur === maxAmount);
-  const distinctTops = new Set(topCandidates.map((c) => Math.round(c.amountEur * 100))).size;
+  const distinctTops = new Set(
+    topCandidates.map((c) => Math.round(c.amountEur * 100)),
+  ).size;
 
   let confidence = 100;
   const reasons: string[] = [];
@@ -110,7 +113,8 @@ export function estimateNextBid(
   if (offerButton) {
     const nearest = [...candidates].sort(
       (a, b) =>
-        verticalDistance(a.node, offerButton) - verticalDistance(b.node, offerButton),
+        verticalDistance(a.node, offerButton) -
+        verticalDistance(b.node, offerButton),
     )[0];
     if (nearest && verticalDistance(nearest.node, offerButton) <= 900) {
       confidence += 15;
@@ -129,11 +133,17 @@ export function estimateNextBid(
 
   // Fail-closed: sotto soglia il chiamante deve trattarla come non disponibile.
   if (confidence < priceConfidenceThreshold) {
-    return { ...estimate, confidence, reason: `${estimate.reason} — SOPRA SOGLIA NO` };
+    return {
+      ...estimate,
+      confidence,
+      reason: `${estimate.reason} — SOPRA SOGLIA NO`,
+    };
   }
   return estimate;
 }
 
 function verticalDistance(a: UiNode, b: UiNode): number {
-  return Math.abs((a.bounds.y1 + a.bounds.y2) / 2 - (b.bounds.y1 + b.bounds.y2) / 2);
+  return Math.abs(
+    (a.bounds.y1 + a.bounds.y2) / 2 - (b.bounds.y1 + b.bounds.y2) / 2,
+  );
 }

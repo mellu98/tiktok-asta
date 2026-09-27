@@ -37,7 +37,9 @@ const CMD_TIMEOUT_MS = 10000;
 let cmdCounter = 0;
 
 function isAlive(session: Session): boolean {
-  return session.alive && session.proc.exitCode === null && !session.proc.killed;
+  return (
+    session.alive && session.proc.exitCode === null && !session.proc.killed
+  );
 }
 
 function openSession(serial: string): Session {
@@ -73,8 +75,12 @@ function openSession(serial: string): Session {
     session.queue = [];
   };
 
-  proc.on("exit", (code) => killPending(`sessione shell terminata (code ${code})`));
-  proc.on("error", (err) => killPending(`errore sessione shell: ${err.message}`));
+  proc.on("exit", (code) =>
+    killPending(`sessione shell terminata (code ${code})`),
+  );
+  proc.on("error", (err) =>
+    killPending(`errore sessione shell: ${err.message}`),
+  );
 
   return session;
 }

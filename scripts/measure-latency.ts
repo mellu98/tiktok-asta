@@ -36,7 +36,9 @@ function stats(values: number[]): Stats | null {
 }
 
 function fmt(s: Stats | null): string {
-  return s ? `min ${s.min}ms · avg ${s.avg}ms · max ${s.max}ms (n=${s.n})` : "—";
+  return s
+    ? `min ${s.min}ms · avg ${s.avg}ms · max ${s.max}ms (n=${s.n})`
+    : "—";
 }
 
 async function main(): Promise<void> {
@@ -54,7 +56,9 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   const serial = ready[0]?.serial as string;
-  console.log(`Device: ${serial} · round: ${rounds} · tap reale: ${wantTap ? "SÌ" : "no"}`);
+  console.log(
+    `Device: ${serial} · round: ${rounds} · tap reale: ${wantTap ? "SÌ" : "no"}`,
+  );
 
   if (wantTap) {
     console.log(

@@ -33,7 +33,9 @@ export async function dumpUiHierarchy(serial: string): Promise<string> {
     const markerIdx = out.indexOf("<node");
     if (markerIdx !== -1) {
       const xmlStart = out.lastIndexOf("<?xml", markerIdx);
-      return xmlStart === -1 ? out.slice(out.lastIndexOf("\n", markerIdx) + 1) : out.slice(xmlStart);
+      return xmlStart === -1
+        ? out.slice(out.lastIndexOf("\n", markerIdx) + 1)
+        : out.slice(xmlStart);
     }
     if (/ERROR/i.test(out)) {
       // Tipico: "ERROR: could not get idle state." (UI in transizione)

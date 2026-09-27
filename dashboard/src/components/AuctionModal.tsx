@@ -1,4 +1,8 @@
-import type { AuctionAnalysis, RoundResult, UiNode } from "../../../src/shared/types";
+import type {
+  AuctionAnalysis,
+  RoundResult,
+  UiNode,
+} from "../../../src/shared/types";
 
 interface Props {
   analysis: AuctionAnalysis;
@@ -47,7 +51,13 @@ function NodeTable({ nodes }: { nodes: UiNode[] }) {
   );
 }
 
-export function AuctionModal({ analysis, round, onDryRun, onLive, onClose }: Props) {
+export function AuctionModal({
+  analysis,
+  round,
+  onDryRun,
+  onLive,
+  onClose,
+}: Props) {
   const mode = round?.mode ?? null;
   const decision = round?.decision ?? null;
 
@@ -101,12 +111,14 @@ export function AuctionModal({ analysis, round, onDryRun, onLive, onClose }: Pro
           {round && mode !== "live" && decision === "offer" && (
             <div className="offer-panel ok">
               <p>
-                <strong>Condizioni soddisfatte (dry — nessun tap eseguito)</strong>
+                <strong>
+                  Condizioni soddisfatte (dry — nessun tap eseguito)
+                </strong>
               </p>
               <p className="note">
-                etichetta: «{round.buttonLabel}» · punteggio{" "}
-                {round.buttonScore}/100 · centro ({round.buttonCenter?.x},{" "}
-                {round.buttonCenter?.y}) · prezzo{" "}
+                etichetta: «{round.buttonLabel}» · punteggio {round.buttonScore}
+                /100 · centro ({round.buttonCenter?.x}, {round.buttonCenter?.y})
+                · prezzo{" "}
                 {round.priceEur !== null ? `${round.priceEur}€` : "n/d"} (
                 confidenza {round.priceConfidence ?? "n/d"}%) · offerte spese:{" "}
                 {round.offersSpent}
@@ -133,7 +145,8 @@ export function AuctionModal({ analysis, round, onDryRun, onLive, onClose }: Pro
             >
               <p>
                 <strong>
-                  Tap reale {round.decision === "offer" ? "eseguito" : "NON eseguito"}{" "}
+                  Tap reale{" "}
+                  {round.decision === "offer" ? "eseguito" : "NON eseguito"}{" "}
                   {round.buttonCenter
                     ? `a (${round.buttonCenter.x}, ${round.buttonCenter.y})`
                     : ""}
@@ -146,8 +159,8 @@ export function AuctionModal({ analysis, round, onDryRun, onLive, onClose }: Pro
               {round.timings && (
                 <p className="note">
                   Latenze — dump {round.timings.dumpMs}ms · parse{" "}
-                  {round.timings.parseMs}ms · decisione{" "}
-                  {round.timings.decideMs}ms
+                  {round.timings.parseMs}ms · decisione {round.timings.decideMs}
+                  ms
                   {round.timings.tapMs !== null
                     ? ` · tap ${round.timings.tapMs}ms`
                     : ""}

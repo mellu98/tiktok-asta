@@ -17,11 +17,7 @@ import {
 } from "../adb/auction";
 import { captureAndSave } from "../adb/screenshots";
 import { runRound } from "../auction/engine";
-import {
-  loadConfig,
-  saveConfig,
-  type AuctionConfig,
-} from "../auction/config";
+import { loadConfig, saveConfig, type AuctionConfig } from "../auction/config";
 import { loadSafety, setEmergencyStop } from "../auction/safety";
 import { listAuctions, resetAuction } from "../auction/state";
 import { readJournal } from "../auction/journal";
@@ -167,7 +163,8 @@ export function buildRouter(deps: Deps): Router {
 
   router.post("/auction/estop", (req, res) => {
     try {
-      const engaged = (req.body as { engaged?: boolean } | undefined)?.engaged === true;
+      const engaged =
+        (req.body as { engaged?: boolean } | undefined)?.engaged === true;
       const reason =
         (req.body as { reason?: string } | undefined)?.reason ?? null;
       const safety = setEmergencyStop(engaged, reason);
@@ -203,10 +200,7 @@ export function buildRouter(deps: Deps): Router {
   });
 
   router.get("/auction/journal", (req, res) => {
-    const limit = Math.min(
-      500,
-      Math.max(1, Number(req.query.limit) || 50),
-    );
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 50));
     ok(res, readJournal(limit));
   });
 

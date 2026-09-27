@@ -298,9 +298,7 @@ export function App() {
           onDryRun={() => void actions.round("dry")}
           onLive={() => {
             if (
-              window.confirm(
-                "Eseguire UN SOLO tap reale sul pulsante Offri?",
-              )
+              window.confirm("Eseguire UN SOLO tap reale sul pulsante Offri?")
             ) {
               void actions.round("live");
             }
