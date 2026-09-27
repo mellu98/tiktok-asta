@@ -65,6 +65,15 @@ activityLog.on("entry", (entry) => {
   wsHub.broadcast({ type: "log", entry });
 });
 
+httpServer.on("error", (err) => {
+  activityLog.add(
+    "error",
+    "server",
+    `Impossibile avviare il server interno: ${err.message}. Se un'altra istanza è attiva, chiudila e riprova.`,
+  );
+  process.exit(1);
+});
+
 httpServer.listen(PORT, "127.0.0.1", () => {
   activityLog.add(
     "info",
