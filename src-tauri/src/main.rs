@@ -31,6 +31,7 @@ fn main() {
                 .app_log_dir()
                 .unwrap_or_else(|_| data_dir.clone());
             std::fs::create_dir_all(&screenshots)?;
+            std::fs::create_dir_all(data_dir.join("ui-dumps"))?;
             std::fs::create_dir_all(&log_dir)?;
 
             let sidecar = app.shell().sidecar("poc-server")?;
@@ -40,6 +41,12 @@ fn main() {
                 .env(
                     "POC_SCREENSHOT_DIR",
                     screenshots.to_string_lossy().into_owned(),
+                )
+                // Dump XML uiautomator: percorso assoluto (il CWD del sidecar
+                // lanciato da Finder è "/", un path relativo non è scrivibile)
+                .env(
+                    "POC_UI_DUMP_DIR",
+                    data_dir.join("ui-dumps").to_string_lossy().into_owned(),
                 )
                 .env("POC_LOG_DIR", log_dir.to_string_lossy().into_owned())
                 .env("POC_PARENT_WATCHDOG", "1")
