@@ -18,14 +18,26 @@ SCRCPY_TAG="v${SCRCPY_VERSION}"
 
 ARCH="$(uname -m)"
 case "$ARCH" in
-  arm64)  RUST_TRIPLE="aarch64-apple-darwin"; SCRCPY_ARCH="aarch64" ;;
-  x86_64) RUST_TRIPLE="x86_64-apple-darwin"; SCRCPY_ARCH="x86_64" ;;
-  *) echo "Architettura non supportata: $ARCH" >&2; exit 1 ;;
+arm64)
+  RUST_TRIPLE="aarch64-apple-darwin"
+  SCRCPY_ARCH="aarch64"
+  ;;
+x86_64)
+  RUST_TRIPLE="x86_64-apple-darwin"
+  SCRCPY_ARCH="x86_64"
+  ;;
+*)
+  echo "Architettura non supportata: $ARCH" >&2
+  exit 1
+  ;;
 esac
 
 echo "═══ fetch-tools (${ARCH} → ${RUST_TRIPLE}) ═══"
 
-command -v curl >/dev/null || { echo "curl mancante" >&2; exit 1; }
+command -v curl >/dev/null || {
+  echo "curl mancante" >&2
+  exit 1
+}
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -52,7 +64,10 @@ curl -fsSL -o "$WORK/SHA256SUMS.txt" "https://github.com/Genymobile/scrcpy/relea
 (
   cd "$WORK"
   grep "$SCRCPY_ASSET" SHA256SUMS.txt | shasum -a 256 -c -
-) || { echo "Checksum scrcpy NON valido" >&2; exit 1; }
+) || {
+  echo "Checksum scrcpy NON valido" >&2
+  exit 1
+}
 echo "  checksum OK"
 
 tar -xzf "$WORK/$SCRCPY_ASSET" -C "$WORK"
@@ -71,34 +86,34 @@ echo "• sidecar server (bun --compile)…"
 cd "$REPO_ROOT"
 bun build --compile src/server/index.ts \
   --outfile "src-tauri/binaries/poc-server-${RUST_TRIPLE}" \
-  --target=bun-${SCRCPY_ARCH} 2>/dev/null || \
-bun build --compile src/server/index.ts \
-  --outfile "src-tauri/binaries/poc-server-${RUST_TRIPLE}"
+  --target=bun-${SCRCPY_ARCH} 2>/dev/null ||
+  bun build --compile src/server/index.ts \
+    --outfile "src-tauri/binaries/poc-server-${RUST_TRIPLE}"
 chmod +x "src-tauri/binaries/poc-server-${RUST_TRIPLE}"
 
 # Verifica che il sidecar parta e risponda
 echo "• smoke test sidecar…"
 SIDE_BIN="$REPO_ROOT/src-tauri/binaries/poc-server-${RUST_TRIPLE}"
 POC_ADB_BIN="$TOOLS_DIR/adb" \
-POC_SCRCPY_BIN="$TOOLS_DIR/scrcpy" \
-POC_LOG_DIR="$WORK/sidelog" \
-"$SIDE_BIN" >/dev/null 2>&1 &
+  POC_SCRCPY_BIN="$TOOLS_DIR/scrcpy" \
+  POC_LOG_DIR="$WORK/sidelog" \
+  "$SIDE_BIN" >/dev/null 2>&1 &
 SIDE_PID=$!
 HEALTH_OK=0
 for _ in 1 2 3 4 5 6 7 8 9 10; do
-if curl -fsS "http://127.0.0.1:5175/api/health" >/dev/null 2>&1; then
-HEALTH_OK=1
-break
-fi
-sleep 1
+  if curl -fsS "http://127.0.0.1:5175/api/health" >/dev/null 2>&1; then
+    HEALTH_OK=1
+    break
+  fi
+  sleep 1
 done
 kill "$SIDE_PID" 2>/dev/null || true
 wait "$SIDE_PID" 2>/dev/null || true
 if [ "$HEALTH_OK" = "1" ]; then
-echo "  sidecar OK (health risponde)"
+  echo "  sidecar OK (health risponde)"
 else
-echo "  ✗ sidecar NON risponde sulla /api/health" >&2
-exit 1
+  echo "  ✗ sidecar NON risponde sulla /api/health" >&2
+  exit 1
 fi
 
 echo ""

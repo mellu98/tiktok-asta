@@ -17,3 +17,6 @@ src-tauri/binaries/*
 !src-tauri/binaries/.gitkeep
 src-tauri/resources/tools/*
 !src-tauri/resources/tools/.gitkeep
+
+ui-dumps/*
+!ui-dumps/.gitkeep

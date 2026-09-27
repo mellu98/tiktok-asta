@@ -1,4 +1,6 @@
 import type {
+  AuctionAnalysis,
+  ClickOfferResult,
   HardwareKey,
   LogEntry,
   ScreenshotResult,
@@ -111,6 +113,19 @@ export const Api = {
       {
         method: "POST",
         body: JSON.stringify({ key }),
+      },
+    ),
+  auctionAnalyze: (serial: string) =>
+    api<AuctionAnalysis>(
+      `/api/devices/${encodeURIComponent(serial)}/auction/analyze`,
+      { method: "POST" },
+    ),
+  clickOffer: (serial: string, dryRun: boolean) =>
+    api<ClickOfferResult>(
+      `/api/devices/${encodeURIComponent(serial)}/auction/click-offer`,
+      {
+        method: "POST",
+        body: JSON.stringify({ dryRun }),
       },
     ),
 };

@@ -72,3 +72,47 @@ export interface ScreenshotResult {
     file: string;
     dataUrl: string;
 }
+
+/* ── Diagnostica asta TikTok (uiautomator) ─────────────────────────────── */
+
+/** Nodo dell'albero UI estratto da `uiautomator dump`. */
+export interface UiNode {
+    text: string;
+    contentDesc: string;
+    resourceId: string;
+    className: string;
+    clickable: boolean;
+    enabled: boolean;
+    bounds: { x1: number; y1: number; x2: number; y2: number };
+    /** Centro dei bounds: pronto per `input tap`. */
+    center: { x: number; y: number };
+    /** Indice nel documento (ordine dell'albero, per tie-break deterministici). */
+    order: number;
+}
+
+/** Risposta di POST /api/devices/:serial/auction/analyze */
+export interface AuctionAnalysis {
+    screenshot: ScreenshotResult;
+    /** Percorso dell'XML raw salvato per debug. */
+    xmlFile: string;
+    nodeCount: number;
+    /** Nodi che contengono keyword dell'asta (Offri, €, prezzo…). */
+    matches: UiNode[];
+    /** Tutti i nodi clickabili (riassunto di cosa espone la schermata). */
+    clickableNodes: UiNode[];
+    /** Risoluzione stimata dello schermo (max bounds osservati). */
+    screenSize: { width: number; height: number };
+}
+
+/** Risposta di POST /api/devices/:serial/auction/click-offer */
+export interface ClickOfferResult {
+    status: "dry-run" | "tapped" | "not-found" | "ambiguous";
+    center?: { x: number; y: number };
+    node?: UiNode;
+    /** Tutti i candidati “Offri” visti nel dump (per diagnosi). */
+    candidates?: UiNode[];
+    /** Firma dell'albero UI prima e dopo il tap (solo live). */
+    before?: { nodeCount: number; signature: string };
+    after?: { nodeCount: number; signature: string };
+    screenshotAfter?: ScreenshotResult;
+}

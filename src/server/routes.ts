@@ -11,9 +11,15 @@ import {
 import { listDevices } from "../adb/devices";
 import { takeScreenshot } from "../adb/screenshots";
 import { AdbError } from "../adb/client";
+import {
+  clickOffer,
+  dumpUiHierarchy,
+  findCandidateAuctionNodes,
+  parseUiHierarchy,
+} from "../adb/auction";
 import type { DeviceManager } from "../devices/device-manager";
 import { scrcpyLauncher } from "../scrcpy/launcher";
-import type { ScreenshotResult } from "../shared/types";
+import type { AuctionAnalysis, ScreenshotResult } from "../shared/types";
 import { activityLog } from "./logging";
 import type { WsHub } from "./ws";
 
@@ -26,6 +32,26 @@ import type { WsHub } from "./ws";
 
 const REPO_ROOT = new URL("../../", import.meta.url);
 const SCREENSHOT_DIR = process.env.POC_SCREENSHOT_DIR ?? "screenshots";
+const UI_DUMP_DIR = process.env.POC_UI_DUMP_DIR ?? "ui-dumps";
+
+function stampNow(): string {
+  return new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+}
+
+function safeSerial(serial: string): string {
+  return serial.replace(/[^A-Za-z0-9._-]/g, "_");
+}
+
+async function saveScreenshot(serial: string): Promise<ScreenshotResult> {
+  const png = await takeScreenshot(serial);
+  mkdirSync(SCREENSHOT_DIR, { recursive: true });
+  const file = `${SCREENSHOT_DIR}/screen_${safeSerial(serial)}_${stampNow()}.png`;
+  writeFileSync(file, png);
+  return {
+    file,
+    dataUrl: `data:image/png;base64,${png.toString("base64")}`,
+  };
+}
 
 interface Deps {
   manager: DeviceManager;
@@ -68,17 +94,80 @@ export function buildRouter(deps: Deps): Router {
   router.post("/devices/:serial/screenshot", async (req, res) => {
     try {
       const serial = requireSerial(req);
-      const png = await takeScreenshot(serial);
-      mkdirSync(SCREENSHOT_DIR, { recursive: true });
-      const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-      const safeSerial = serial.replace(/[^A-Za-z0-9._-]/g, "_");
-      const file = `${SCREENSHOT_DIR}/screen_${safeSerial}_${stamp}.png`;
-      writeFileSync(file, png);
-      const result: ScreenshotResult = {
-        file,
-        dataUrl: `data:image/png;base64,${png.toString("base64")}`,
+      const result = await saveScreenshot(serial);
+      activityLog.add("success", "adb", `Screenshot salvato: ${result.file}`);
+      ok(res, result);
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  // ── Diagnostica asta TikTok (uiautomator) ─────────────────────────────────
+  router.post("/devices/:serial/auction/analyze", async (req, res) => {
+    try {
+      const serial = requireSerial(req);
+      const xml = await dumpUiHierarchy(serial);
+      const nodes = parseUiHierarchy(xml);
+      const matches = findCandidateAuctionNodes(nodes);
+
+      mkdirSync(UI_DUMP_DIR, { recursive: true });
+      const xmlFile = `${UI_DUMP_DIR}/window_${safeSerial(serial)}_${stampNow()}.xml`;
+      writeFileSync(xmlFile, xml, "utf8");
+
+      const screenshot = await saveScreenshot(serial);
+
+      let width = 0;
+      let height = 0;
+      for (const n of nodes) {
+        if (n.bounds.x2 > width) width = n.bounds.x2;
+        if (n.bounds.y2 > height) height = n.bounds.y2;
+      }
+
+      const analysis: AuctionAnalysis = {
+        screenshot,
+        xmlFile,
+        nodeCount: nodes.length,
+        matches,
+        clickableNodes: nodes.filter((n) => n.clickable).slice(0, 120),
+        screenSize: { width, height },
       };
-      activityLog.add("success", "adb", `Screenshot salvato: ${file}`);
+      activityLog.add(
+        matches.length > 0 ? "success" : "warn",
+        "adb",
+        `Analisi schermata: ${nodes.length} nodi, ${matches.length} candidati Offri/offerta/€/prezzo — XML: ${xmlFile}`,
+      );
+      ok(res, analysis);
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  router.post("/devices/:serial/auction/click-offer", async (req, res) => {
+    try {
+      const serial = requireSerial(req);
+      const dryRun = (req.body as { dryRun?: boolean } | undefined)?.dryRun !== false;
+      const result = await clickOffer(serial, { dryRun });
+      if (result.status === "tapped") {
+        result.screenshotAfter = await saveScreenshot(serial);
+        const changed = result.before?.signature !== result.after?.signature;
+        activityLog.add(
+          changed ? "success" : "warn",
+          "input",
+          `Tap Offri a (${result.center?.x}, ${result.center?.y}) — UI ${changed ? "CAMBIATA" : "INVARIATA"} dopo il tap`,
+        );
+      } else if (result.status === "dry-run") {
+        activityLog.add(
+          "success",
+          "input",
+          `DRY RUN Offri → (${result.center?.x}, ${result.center?.y}) via ${result.node?.resourceId || result.node?.className || "nodo"}`,
+        );
+      } else {
+        activityLog.add(
+          "warn",
+          "input",
+          `Pulsante Offri ${result.status === "not-found" ? "NON trovato" : "ambiguo"} nell'albero UI`,
+        );
+      }
       ok(res, result);
     } catch (err) {
       fail(res, err);

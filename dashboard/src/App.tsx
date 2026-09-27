@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
+  AuctionAnalysis,
   AndroidDevice,
+  ClickOfferResult,
   LogEntry,
   WsServerMessage,
 } from "../../src/shared/types";
@@ -11,6 +13,7 @@ import { LogPanel } from "./components/LogPanel";
 import { ScreenshotModal } from "./components/ScreenshotModal";
 import { AppsModal } from "./components/AppsModal";
 import { OnboardingPanel } from "./components/OnboardingPanel";
+import { AuctionModal } from "./components/AuctionModal";
 
 export function App() {
   const [devices, setDevices] = useState<AndroidDevice[]>([]);
@@ -25,6 +28,10 @@ export function App() {
     loading: boolean;
     items: string[];
   }>({ open: false, loading: false, items: [] });
+  const [auction, setAuction] = useState<AuctionAnalysis | null>(null);
+  const [offerResult, setOfferResult] = useState<ClickOfferResult | null>(
+    null,
+  );
   const [scrcpyRunning, setScrcpyRunning] = useState<Record<string, boolean>>(
     {},
   );
@@ -145,6 +152,18 @@ export function App() {
       run(async () => {
         await Api.adbRestart();
       }),
+    analyzeAuction: () =>
+      run(async () => {
+        if (!device) return;
+        const analysis = await Api.auctionAnalyze(device.serial);
+        setAuction(analysis);
+      }),
+    clickOffer: (dryRun: boolean) =>
+      run(async () => {
+        if (!device) return;
+        const result = await Api.clickOffer(device.serial, dryRun);
+        setOfferResult(result);
+      }),
     launchApp: (pkg: string) =>
       run(async () => {
         if (!device) return;
@@ -213,6 +232,13 @@ export function App() {
               >
                 📱 Elenco app
               </button>
+              <button
+                className="btn"
+                onClick={actions.analyzeAuction}
+                disabled={!authorized}
+              >
+                🔎 Analizza schermata TikTok
+              </button>
               <button className="btn warn" onClick={actions.restartAdb}>
                 ⟳ Riavvia ADB
               </button>
@@ -250,6 +276,27 @@ export function App() {
           items={appsState.items}
           onLaunch={actions.launchApp}
           onClose={() => setAppsState((s) => ({ ...s, open: false }))}
+        />
+      )}
+
+      {auction && (
+        <AuctionModal
+          analysis={auction}
+          offerResult={offerResult}
+          onDryRun={() => void actions.clickOffer(true)}
+          onLive={() => {
+            if (
+              window.confirm(
+                "Eseguire UN SOLO tap reale sul pulsante Offri?",
+              )
+            ) {
+              void actions.clickOffer(false);
+            }
+          }}
+          onClose={() => {
+            setAuction(null);
+            setOfferResult(null);
+          }}
         />
       )}
     </div>

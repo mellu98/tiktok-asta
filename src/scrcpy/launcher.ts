@@ -32,10 +32,14 @@ class ScrcpyLauncher {
   private readonly procs = new Map<string, Set<ChildProcess>>();
 
   start(serial: string, windowTitle: string, hooks: ScrcpyHooks): number {
-    const child = spawn(SCRCPY_BIN, buildScrcpyArgs(serial, windowTitle, ADB_PATH), {
-      stdio: "ignore",
-      env: process.env,
-    });
+    const child = spawn(
+      SCRCPY_BIN,
+      buildScrcpyArgs(serial, windowTitle, ADB_PATH),
+      {
+        stdio: "ignore",
+        env: process.env,
+      },
+    );
 
     const set = this.procs.get(serial) ?? new Set<ChildProcess>();
     set.add(child);

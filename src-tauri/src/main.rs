@@ -65,11 +65,8 @@ fn main() {
                                 let _ = writeln!(file, "{}", String::from_utf8_lossy(&line));
                             }
                             CommandEvent::Stderr(line) => {
-                                let _ = writeln!(
-                                    file,
-                                    "[stderr] {}",
-                                    String::from_utf8_lossy(&line)
-                                );
+                                let _ =
+                                    writeln!(file, "[stderr] {}", String::from_utf8_lossy(&line));
                             }
                             CommandEvent::Terminated(status) => {
                                 let _ = writeln!(file, "[terminated] {status:?}");

@@ -427,3 +427,70 @@ input:focus,
   border-color: #155e75;
   color: #a5f3fc;
 }
+
+/* Analisi asta TikTok */
+.modal.auction {
+  max-width: 860px;
+}
+.shot.small {
+  max-height: 220px;
+  object-fit: contain;
+  width: auto;
+  margin: 0 auto;
+  display: block;
+}
+.auction-section {
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 12px;
+}
+.auction-section h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--accent);
+}
+.table-wrap {
+  overflow-x: auto;
+}
+.auction-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+.auction-table th,
+.auction-table td {
+  text-align: left;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--panel-border);
+  white-space: nowrap;
+}
+.auction-table th {
+  color: var(--dim);
+  font-weight: 600;
+}
+.auction-table code {
+  color: var(--accent);
+}
+.offer-panel {
+  border-radius: 8px;
+  padding: 12px;
+}
+.offer-panel p {
+  margin: 0 0 8px;
+}
+.offer-panel.ok {
+  background: #0c2e22;
+  border: 1px solid #14532d;
+}
+.offer-panel.warnp {
+  background: #33260a;
+  border: 1px solid #713f12;
+}
+.clickable-details {
+  font-size: 13px;
+}
+.clickable-details summary {
+  cursor: pointer;
+  color: var(--dim);
+}

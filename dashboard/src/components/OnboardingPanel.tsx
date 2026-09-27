@@ -19,9 +19,11 @@ export function OnboardingPanel({ serverReady }: Props) {
             <strong>Attiva le Opzioni sviluppatore</strong>
           </div>
           <p>
-            Sul telefono: <em>Impostazioni → Informazioni sul telefono →
-            Informazioni software</em>, poi tocca <strong>Numero build</strong>{" "}
-            7 volte di seguito.
+            Sul telefono:{" "}
+            <em>
+              Impostazioni → Informazioni sul telefono → Informazioni software
+            </em>
+            , poi tocca <strong>Numero build</strong> 7 volte di seguito.
           </p>
         </li>
         <li>
@@ -52,9 +54,10 @@ export function OnboardingPanel({ serverReady }: Props) {
             <strong>Autorizza il computer</strong>
           </div>
           <p>
-            Sullo schermo del telefono tocca <strong>«Consenti sempre da
-            questo computer»</strong> nella richiesta «Consentire debug USB?».
-            Non la vedi? Sblocca il telefono e scollega/ricollega il cavo.
+            Sullo schermo del telefono tocca{" "}
+            <strong>«Consenti sempre da questo computer»</strong> nella
+            richiesta «Consentire debug USB?». Non la vedi? Sblocca il telefono
+            e scollega/ricollega il cavo.
           </p>
         </li>
       </ol>
