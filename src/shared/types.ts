@@ -81,14 +81,71 @@ export interface AuctionConfig {
   maxBidEur: number;
   /** Numero massimo di offerte per singola asta. */
   maxOffersPerAuction: number;
-  /** Soglia minima di confidenza (0-100) sul pulsante Offri. */
+  /** Confidenza OCR minima (0-100) sulla lettura del pulsante «Offri N €». */
   confidenceThreshold: number;
-  /** Soglia minima di confidenza (0-100) sulla lettura del prezzo. */
+  /** Confidenza OCR minima (0-100) sulla lettura di prezzo attuale e timer. */
   priceConfidenceThreshold: number;
   /** true (default) = nessun tap reale, solo valutazione. */
   dryRun: boolean;
   /** ms fra i round in modalità automatica. 0 = auto OFF (default). */
   autoRoundMs: number;
+}
+
+/* ── Lettura dello schermo (screenshot + OCR) ──────────────────────── */
+
+/** Riga di testo riconosciuta dall'OCR, in pixel dello schermo del device. */
+export interface OcrLine {
+    text: string;
+    /** Confidenza dell'OCR, 0-100. */
+    conf: number;
+    bounds: { x1: number; y1: number; x2: number; y2: number };
+    center: { x: number; y: number };
+}
+
+/**
+ * Fasi della card asta osservate su TikTok LIVE:
+ * coming (In arrivo) → running (timer MM:SS) → final (ultimi 10 s, "Ns";
+ * ogni offerta riporta il timer a 10 s) → closing (0s, pulsante ancora
+ * visibile anche per minuti) → sold (Offerta finale) → waiting (In attesa).
+ * unknown = card presente ma timer non leggibile in modo affidabile.
+ */
+export type AuctionPhase =
+    | "coming"
+    | "running"
+    | "final"
+    | "closing"
+    | "sold"
+    | "waiting"
+    | "unknown";
+
+/** Card asta interpretata da una lettura OCR. */
+export interface AuctionCard {
+    phase: AuctionPhase;
+    timerSec: number | null;
+    timerText: string | null;
+    timerConf: number | null;
+    currentPriceEur: number | null;
+    priceConf: number | null;
+    /** "Offerta iniziale": nessuna offerta ancora, il pulsante vale il prezzo di partenza. */
+    startingPrice: boolean;
+    /** "ha fatto l'offerta più alta": c'è già almeno un'offerta. */
+    hasBids: boolean;
+    /** "Le offerte ripristinano l'asta" (ultimi secondi). */
+    resetNotice: boolean;
+    /** Pulsante «Offri N €» (sempre accanto a «Personalizzato»). */
+    offer: {
+        label: string;
+        amountEur: number;
+        conf: number;
+        bounds: { x1: number; y1: number; x2: number; y2: number };
+        center: { x: number; y: number };
+    } | null;
+    itemTitle: string | null;
+    itemTitleConf: number | null;
+    /** Titolo normalizzato: identità dell'articolo per il limite di offerte. */
+    itemKey: string | null;
+    /** "Offerta finale N €" (asta aggiudicata). */
+    finalPriceEur: number | null;
 }
 
 /** Voce del journal delle decisioni (una riga JSONL per round). */
@@ -99,27 +156,34 @@ export interface JournalEntry {
   kind: "evaluate" | "dry" | "offer";
   decision: "offer" | "skip";
   reason: string;
-  priceEur: number | null;
-  priceConfidence: number | null;
-  buttonScore: number | null;
-  buttonCenter: { x: number; y: number } | null;
+  phase: AuctionPhase | null;
+  timerSec: number | null;
+  itemTitle: string | null;
+  currentPriceEur: number | null;
+  offerAmountEur: number | null;
+  offerCenter: { x: number; y: number } | null;
   limits: {
     maxBidEur: number;
     maxOffersPerAuction: number;
     offersSpent: number;
     confidenceThreshold: number;
   };
-  xmlFile: string | null;
+  readingFile: string | null;
   screenshotFile: string | null;
   commandError: string | null;
-  uiChangedAfterTap: boolean | null;
+  verifyOutcome: string | null;
   timings?: RoundTimings;
 }
 
 export interface RoundTimings {
-    dumpMs: number;
+    /** Screenshot raw via adb. */
+    captureMs: number;
+    /** OCR della metà bassa dello schermo. */
+    ocrMs: number;
     parseMs: number;
     decideMs: number;
+    /** Seconda lettura di conferma (solo se la prima passa le guardie). */
+    confirmMs: number | null;
     tapMs: number | null;
     verifyMs: number | null;
 }
@@ -131,11 +195,15 @@ export interface RoundResult {
     auctionId: string | null;
     decision: "offer" | "skip";
     reason: string;
-    buttonScore: number | null;
-    buttonLabel: string | null;
-    buttonCenter: { x: number; y: number } | null;
-    priceEur: number | null;
-    priceConfidence: number | null;
+    phase: AuctionPhase | null;
+    timerSec: number | null;
+    itemTitle: string | null;
+    currentPriceEur: number | null;
+    offerAmountEur: number | null;
+    offerLabel: string | null;
+    offerCenter: { x: number; y: number } | null;
+    /** Confidenza OCR minima fra pulsante, prezzo e timer (0-100). */
+    ocrConfidence: number | null;
     offersSpent: number;
     limits: {
         maxBidEur: number;
@@ -145,8 +213,11 @@ export interface RoundResult {
         dryRun: boolean;
         estopEngaged: boolean;
     };
-    xmlFile: string | null;
+    /** Righe OCR della lettura su cui si è deciso (JSON). */
+    readingFile: string | null;
+    /** Frame su cui si è deciso (JPEG). */
     screenshotFile: string | null;
+    verifyOutcome: string | null;
     uiChangedAfterTap: boolean | null;
     error: string | null;
     timings: RoundTimings;
@@ -172,8 +243,16 @@ export interface UiNode {
 /** Risposta di POST /api/devices/:serial/auction/analyze */
 export interface AuctionAnalysis {
     screenshot: ScreenshotResult;
-    /** Percorso dell'XML raw salvato per debug. */
-    xmlFile: string;
+    /** Card asta letta via OCR (null = nessuna card sullo schermo). */
+    card: AuctionCard | null;
+    /** Righe OCR della metà bassa dello schermo. */
+    ocrLines: OcrLine[];
+    /** Percorso delle righe OCR salvate (JSON). */
+    readingFile: string;
+    /** Percorso dell'XML uiautomator (null se il dump non è riuscito). */
+    xmlFile: string | null;
+    /** Perché il dump uiautomator non è riuscito (es. LIVE mai idle). */
+    dumpError: string | null;
     nodeCount: number;
     /** Nodi che contengono keyword dell'asta (Offri, €, prezzo…). */
     matches: UiNode[];

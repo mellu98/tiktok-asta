@@ -3,7 +3,8 @@
 # Prepara gli artefatti necessari alla build dell'app Tauri:
 #   1. adb (platform-tools ufficiali Google, zip darwin)
 #   2. scrcpy (release ufficiali GitHub, con verifica SHA256)
-#   3. sidecar del server Node compilato in binario standalone (bun --compile)
+#   3. helper OCR (tools/ocr/ocr.swift, Vision di macOS) compilato con swiftc
+#   4. sidecar del server Node compilato in binario standalone (bun --compile)
 #
 # Sorgenti SOLO ufficiali: dl.google.com + github.com/Genymobile/scrcpy/releases.
 # Lo script è idempotente: ricrea sempre artefatti puliti.
@@ -80,7 +81,16 @@ cp "$EXTRACTED/disconnected.png" "$TOOLS_DIR/disconnected.png"
 chmod +x "$TOOLS_DIR/scrcpy"
 echo "  scrcpy installato: $("$TOOLS_DIR/scrcpy" --version 2>/dev/null | head -1)"
 
-# ── 3. sidecar: server Node → binario standalone (bun --compile) ────────────
+# ── 3. helper OCR: legge la card asta dagli screenshot (Vision, macOS) ─────
+if ! command -v swiftc >/dev/null 2>&1; then
+  echo "swiftc non trovato — installa gli strumenti Xcode: xcode-select --install" >&2
+  exit 1
+fi
+echo "• helper OCR (swiftc)…"
+swiftc -O "$REPO_ROOT/tools/ocr/ocr.swift" -o "$TOOLS_DIR/ocr"
+chmod +x "$TOOLS_DIR/ocr"
+
+# ── 4. sidecar: server Node → binario standalone (bun --compile) ────────────
 if ! command -v bun >/dev/null 2>&1; then
   echo "bun non trovato — installalo con: brew install bun" >&2
   exit 1

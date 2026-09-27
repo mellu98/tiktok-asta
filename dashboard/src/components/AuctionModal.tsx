@@ -1,4 +1,10 @@
-import type { AuctionAnalysis, RoundResult, UiNode } from "../../../src/shared/types";
+import type {
+  AuctionAnalysis,
+  AuctionCard,
+  RoundResult,
+  UiNode,
+} from "../../../src/shared/types";
+import { euro, formatTimings, PHASE_LABEL } from "../auction-format";
 
 interface Props {
   analysis: AuctionAnalysis;
@@ -47,6 +53,56 @@ function NodeTable({ nodes }: { nodes: UiNode[] }) {
   );
 }
 
+function CardSummary({ card }: { card: AuctionCard | null }) {
+  if (!card) {
+    return <p className="note">Nessuna card asta riconosciuta sullo schermo.</p>;
+  }
+  return (
+    <table className="auction-table">
+      <tbody>
+        <tr>
+          <th>fase</th>
+          <td>{PHASE_LABEL[card.phase]}</td>
+        </tr>
+        <tr>
+          <th>timer</th>
+          <td>
+            {card.timerSec !== null ? `${card.timerSec}s` : "n/d"}
+            {card.timerText ? ` («${card.timerText}», conf ${card.timerConf})` : ""}
+          </td>
+        </tr>
+        <tr>
+          <th>prezzo attuale</th>
+          <td>
+            {euro(card.currentPriceEur)}
+            {card.startingPrice ? " · offerta iniziale" : ""}
+            {card.hasBids ? " · ci sono offerte" : ""}
+            {card.resetNotice ? " · «le offerte ripristinano l'asta»" : ""}
+          </td>
+        </tr>
+        <tr>
+          <th>pulsante</th>
+          <td>
+            {card.offer
+              ? `«${card.offer.label}» → ${card.offer.amountEur}€ · centro (${card.offer.center.x}, ${card.offer.center.y}) · conf ${card.offer.conf}`
+              : "n/d"}
+          </td>
+        </tr>
+        <tr>
+          <th>articolo</th>
+          <td>{card.itemTitle ?? "n/d"}</td>
+        </tr>
+        {card.finalPriceEur !== null && (
+          <tr>
+            <th>offerta finale</th>
+            <td>{euro(card.finalPriceEur)}</td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  );
+}
+
 export function AuctionModal({ analysis, round, onDryRun, onLive, onClose }: Props) {
   const mode = round?.mode ?? null;
   const decision = round?.decision ?? null;
@@ -62,9 +118,16 @@ export function AuctionModal({ analysis, round, onDryRun, onLive, onClose }: Pro
         </div>
 
         <p className="note">
-          {analysis.nodeCount} nodi · schermo ~{analysis.screenSize.width}×
-          {analysis.screenSize.height} · {analysis.clickableNodes.length}{" "}
-          clickabili · XML raw: <code>{analysis.xmlFile}</code>
+          schermo {analysis.screenSize.width}×{analysis.screenSize.height} ·{" "}
+          {analysis.ocrLines.length} righe OCR: <code>{analysis.readingFile}</code>
+          {" · "}
+          {analysis.xmlFile ? (
+            <>
+              dump uiautomator {analysis.nodeCount} nodi: <code>{analysis.xmlFile}</code>
+            </>
+          ) : (
+            <>dump uiautomator non riuscito ({analysis.dumpError})</>
+          )}
         </p>
 
         <img
@@ -74,14 +137,18 @@ export function AuctionModal({ analysis, round, onDryRun, onLive, onClose }: Pro
         />
 
         <div className="auction-section">
+          <h3>Card asta (OCR)</h3>
+          <CardSummary card={analysis.card} />
+        </div>
+
+        <div className="auction-section">
           <h3>
-            Candidati asta ({analysis.matches.length}) — Offri / offerta / € /
-            prezzo
+            Nodi uiautomator con keyword asta ({analysis.matches.length})
           </h3>
           {analysis.matches.length === 0 ? (
             <p className="note">
-              Nessun nodo con keyword asta trovato nell'albero. Vedi lista
-              clickabili sotto e XML raw per il fallback a coordinate fissa.
+              Nessun nodo con keyword asta nell'albero uiautomator (sulle LIVE
+              la card non è esposta): la decisione usa la lettura OCR sopra.
             </p>
           ) : (
             <div className="table-wrap">
@@ -104,13 +171,14 @@ export function AuctionModal({ analysis, round, onDryRun, onLive, onClose }: Pro
                 <strong>Condizioni soddisfatte (dry — nessun tap eseguito)</strong>
               </p>
               <p className="note">
-                etichetta: «{round.buttonLabel}» · punteggio{" "}
-                {round.buttonScore}/100 · centro ({round.buttonCenter?.x},{" "}
-                {round.buttonCenter?.y}) · prezzo{" "}
-                {round.priceEur !== null ? `${round.priceEur}€` : "n/d"} (
-                confidenza {round.priceConfidence ?? "n/d"}%) · offerte spese:{" "}
-                {round.offersSpent}
+                «{round.offerLabel}» → {euro(round.offerAmountEur)} · centro (
+                {round.offerCenter?.x}, {round.offerCenter?.y}) · prezzo attuale{" "}
+                {euro(round.currentPriceEur)} ·{" "}
+                {round.phase ? PHASE_LABEL[round.phase] : "n/d"}
+                {round.timerSec !== null ? ` ${round.timerSec}s` : ""} · conf OCR{" "}
+                {round.ocrConfidence ?? "n/d"} · offerte spese: {round.offersSpent}
               </p>
+              <p className="note">{formatTimings(round.timings)}</p>
               <button className="btn warn" onClick={onLive}>
                 ⚡ TAP REALE (uno solo)
               </button>
@@ -121,6 +189,13 @@ export function AuctionModal({ analysis, round, onDryRun, onLive, onClose }: Pro
             <div className="offer-panel warnp">
               <p>
                 <strong>NESSUN tap: {round.reason}</strong>
+              </p>
+              <p className="note">
+                {round.phase ? PHASE_LABEL[round.phase] : "nessuna card"}
+                {round.timerSec !== null ? ` ${round.timerSec}s` : ""} · prezzo{" "}
+                {euro(round.currentPriceEur)} · pulsante{" "}
+                {round.offerLabel ? `«${round.offerLabel}»` : "n/d"} ·{" "}
+                {formatTimings(round.timings)}
               </p>
             </div>
           )}
@@ -134,8 +209,8 @@ export function AuctionModal({ analysis, round, onDryRun, onLive, onClose }: Pro
               <p>
                 <strong>
                   Tap reale {round.decision === "offer" ? "eseguito" : "NON eseguito"}{" "}
-                  {round.buttonCenter
-                    ? `a (${round.buttonCenter.x}, ${round.buttonCenter.y})`
+                  {round.offerCenter
+                    ? `a (${round.offerCenter.x}, ${round.offerCenter.y})`
                     : ""}
                 </strong>
               </p>
@@ -143,22 +218,13 @@ export function AuctionModal({ analysis, round, onDryRun, onLive, onClose }: Pro
               {round.error && (
                 <p className="note">Errore comando: {round.error}</p>
               )}
-              {round.timings && (
-                <p className="note">
-                  Latenze — dump {round.timings.dumpMs}ms · parse{" "}
-                  {round.timings.parseMs}ms · decisione{" "}
-                  {round.timings.decideMs}ms
-                  {round.timings.tapMs !== null
-                    ? ` · tap ${round.timings.tapMs}ms`
-                    : ""}
-                  {round.timings.verifyMs !== null
-                    ? ` · verifica ${round.timings.verifyMs}ms`
-                    : ""}
-                </p>
+              <p className="note">Latenze — {formatTimings(round.timings)}</p>
+              {round.verifyOutcome && (
+                <p className="note">Verifica: {round.verifyOutcome}</p>
               )}
               {round.screenshotFile && (
                 <p className="note">
-                  Post-tap: <code>{round.screenshotFile}</code>
+                  Frame della decisione: <code>{round.screenshotFile}</code>
                 </p>
               )}
             </div>

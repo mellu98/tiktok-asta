@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { euro, formatTimings, PHASE_LABEL } from "../auction-format";
 import type { RoundResult } from "../../../src/shared/types";
 import type { AuctionConfig } from "../../../src/shared/types";
 import type { JournalEntry } from "../../../src/shared/types";
@@ -207,8 +208,12 @@ export function AutomationPanel({ serial, onError }: Props) {
         Offerte spese su questa asta: <strong>{totalSpent}</strong>
         {lastRound && (
           <>
-            {" · "}ultimo round: {lastRound.mode} → {lastRound.decision} (
-            {lastRound.reason})
+            {" · "}ultimo round: {lastRound.mode} →{" "}
+            {lastRound.phase ? PHASE_LABEL[lastRound.phase] : "nessuna card"}
+            {lastRound.timerSec !== null ? ` ${lastRound.timerSec}s` : ""} · prezzo{" "}
+            {euro(lastRound.currentPriceEur)} · pulsante{" "}
+            {lastRound.offerLabel ? `«${lastRound.offerLabel}»` : "n/d"} →{" "}
+            {lastRound.decision} ({lastRound.reason}) · {formatTimings(lastRound.timings)}
           </>
         )}
       </p>
@@ -226,8 +231,8 @@ export function AutomationPanel({ serial, onError }: Props) {
                   {j.kind}/{j.decision}
                 </span>
                 <span>
-                  {j.priceEur !== null ? `${j.priceEur}€` : "prezzo n/d"} —{" "}
-                  {j.reason}
+                  {j.offerAmountEur !== null ? `offri ${j.offerAmountEur}€` : "pulsante n/d"}
+                  {j.itemTitle ? ` · ${j.itemTitle}` : ""} — {j.reason}
                 </span>
               </div>
             ))}

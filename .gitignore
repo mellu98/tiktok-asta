@@ -9,6 +9,8 @@ screenshots/*
 *.log
 .DS_Store
 coverage/
+# helper OCR compilato in dev (tools/ocr/ocr.swift)
+.cache/
 
 # Tauri
 src-tauri/target/

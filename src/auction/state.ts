@@ -9,9 +9,12 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname } from "node:path";
 import { stateFile, setDataDir } from "./base-dir";
+import { isSameItem } from "./card";
 
 interface AuctionEntry {
   auctionId: string;
+  /** Titolo normalizzato dell'articolo (assente nelle voci precedenti). */
+  itemKey?: string;
   offersSpent: number;
   firstSeenAt: number;
   lastOfferAt: number | null;
@@ -52,21 +55,14 @@ function saveState(): void {
 }
 
 /**
- * Identificatore deterministico e stabile dell'asta corrente.
- *
- * NOTE SULLA ROBUSTEZZA (documentato, onesto): l'id deriva dagli importi
- * visibili + la firma forte dell'albero. Se TikTok cambia pagina o l'importo
- * cambia, l'id cambia: il contatore per-asta protegge da DOPPIE offerte sulla
- * stessa schermata, non dall'identità business dell'asta. I limiti difensivi
- * veri restano maxOffersPerAuction + maxBidEur + estop.
+ * Identificatore dell'asta = articolo in vendita (titolo normalizzato letto
+ * sulla card). Non dipende dall'importo né dal resto dello schermo, così
+ * maxOffersPerAuction limita davvero le offerte sullo stesso articolo anche
+ * quando il prezzo sale fra un round e l'altro.
  */
-export function computeAuctionId(
-  uiSignatureStrong: string,
-  amounts: number[],
-): string {
-  const amountsKey = [...amounts].sort((a, b) => a - b).join(",");
+export function computeAuctionId(itemKey: string): string {
   const h = createHash("sha1");
-  h.update(`${uiSignatureStrong.slice(0, 120)}::${amountsKey}`);
+  h.update(itemKey);
   return h.digest("hex").slice(0, 16);
 }
 
@@ -83,10 +79,21 @@ export function getOffersSpent(auctionId: string): number {
 }
 
 /**
+ * Offerte già spese sull'articolo, sommando anche le voci con un titolo quasi
+ * identico: un carattere letto male dall'OCR non deve azzerare il limite.
+ */
+export function getOffersSpentForItem(itemKey: string): number {
+  const state = loadState();
+  return Object.values(state.auctions)
+    .filter((entry) => entry.itemKey !== undefined && isSameItem(entry.itemKey, itemKey))
+    .reduce((sum, entry) => sum + entry.offersSpent, 0);
+}
+
+/**
  * Registra UNA offerta realmente spesa. Da chiamare SOLO dopo l'invio del
  * comando di tap (o in caso di esito incerto: fail-closed conta comunque).
  */
-export function recordOfferSpent(auctionId: string): AuctionCounters {
+export function recordOfferSpent(auctionId: string, itemKey?: string): AuctionCounters {
   const state = loadState();
   state.currentAuctionId = auctionId;
   const entry: AuctionEntry = state.auctions[auctionId] ?? {
@@ -97,6 +104,7 @@ export function recordOfferSpent(auctionId: string): AuctionCounters {
   };
   entry.offersSpent += 1;
   entry.lastOfferAt = Date.now();
+  if (itemKey) entry.itemKey = itemKey;
   state.auctions[auctionId] = entry;
   saveState();
   return { auctionId, offersSpent: entry.offersSpent };

@@ -1,101 +1,79 @@
 /**
- * Motore dell'automazione offerte: un round = dump UI → riconoscimento
- * pulsante → stima prezzo → guardie fail-closed → (solo se TUTTO passa e il
- * modo è "live") UN tap → verifica del cambio UI.
+ * Motore dell'automazione offerte. Un round:
+ *   lettura (screenshot raw + OCR) → card asta → guardie fail-closed →
+ *   seconda lettura di conferma → (solo mode "live" E dry-run spento) UN tap
+ *   al centro di «Offri N €» → verifica sul prezzo.
  *
- * FAIL-CLOSED: qualunque incertezza (estop, dry-run, soglie, prezzo ambiguo,
- * limite raggiunto, lock occupato) porta a decision=skip.
+ * FAIL-CLOSED: qualunque incertezza (estop, fase non attiva, timer ambiguo,
+ * letture poco affidabili o sfasate, limiti, lock occupato) → decision=skip.
  *
- * Nessun loop automatico aggressivo: la ripetizione è demandata al chiamante
- * (endpoint con intervallo configurabile, default disattivato).
+ * Nessun loop automatico aggressivo: la ripetizione è demandata al chiamante.
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { performance } from "node:perf_hooks";
-import { uiDumpsDir } from "./base-dir";
+import { framePath, saveReading } from "./artifacts";
+import { parseAuctionCard } from "./card";
 import { loadConfig } from "./config";
+import { assessCard, confirmCard, verifyOffer } from "./decide";
 import { appendJournal } from "./journal";
 import { isEmergencyStopped } from "./safety";
 import {
   computeAuctionId,
-  getOffersSpent,
+  getOffersSpentForItem,
   recordOfferSpent,
   withDeviceLock,
 } from "./state";
-import { dumpUiHierarchy, parseUiHierarchy } from "../adb/auction";
 import { tap as adbTap } from "../adb/commands";
 import { runInShellSession } from "../adb/shell-session";
-import { captureAndSave } from "../adb/screenshots";
-import { evaluateOfferButton } from "./button";
-import { estimateNextBid } from "./price";
-import type { JournalEntry } from "./journal";
-import type { RoundResult, RoundTimings, UiNode } from "../shared/types";
+import { readScreen, type ScreenReading } from "../vision/ocr";
+import type {
+  AuctionCard,
+  JournalEntry,
+  RoundResult,
+  RoundTimings,
+} from "../shared/types";
 
-const TAP_SETTLE_MS = 2000;
+/** Attesa prima di rileggere il prezzo dopo il tap. */
+const VERIFY_DELAY_MS = 1200;
 
 function now(): number {
   return performance.now();
+}
+
+function elapsed(since: number): number {
+  return Math.round(now() - since);
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Salva l'XML nella cartella canonica e ritorna il percorso. */
-export function saveXmlDump(serial: string, xml: string): string {
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const safeSerial = serial.replace(/[^A-Za-z0-9._-]/g, "_");
-  const dir = uiDumpsDir();
-  mkdirSync(dir, { recursive: true });
-  const file = join(dir, `window_${safeSerial}_${stamp}.xml`);
-  writeFileSync(file, xml, "utf8");
-  return file;
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
-function emptyTimings(): RoundTimings {
-  return { dumpMs: 0, parseMs: 0, decideMs: 0, tapMs: null, verifyMs: null };
-}
-
-function uiSignature(nodes: UiNode[]): string {
-  const texts = nodes
-    .map((n) => n.text || n.contentDesc)
-    .filter((t) => t.length > 0)
-    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-  return `${nodes.length}|${texts.join("|").slice(0, 400)}`;
-}
-
-/**
- * Screenshot diagnostico dei round senza tap (fuori dai tempi misurati):
- * affianca l'XML nel journal per ricostruire cosa c'era a schermo.
- * Best-effort: se fallisce, la decisione resta valida.
- */
-async function attachScreenshot(base: RoundResult): Promise<void> {
-  try {
-    const shot = await captureAndSave(base.serial);
-    base.screenshotFile = shot.file;
-  } catch {
-    // screenshot non critico per la decisione
-  }
+function applyCard(base: RoundResult, card: AuctionCard | null): void {
+  const confs = [card?.offer?.conf, card?.timerConf, card?.priceConf].filter(
+    (c): c is number => typeof c === "number",
+  );
+  base.phase = card?.phase ?? null;
+  base.timerSec = card?.timerSec ?? null;
+  base.itemTitle = card?.itemTitle ?? null;
+  base.currentPriceEur = card?.currentPriceEur ?? null;
+  base.offerAmountEur = card?.offer?.amountEur ?? null;
+  base.offerLabel = card?.offer?.label ?? null;
+  base.offerCenter = card?.offer?.center ?? null;
+  base.ocrConfidence = confs.length > 0 ? Math.min(...confs) : null;
 }
 
 function journalKind(mode: RoundResult["mode"]): "evaluate" | "dry" {
   return mode === "evaluate" ? "evaluate" : "dry";
 }
 
-async function skipResult(base: RoundResult, reason: string): Promise<RoundResult> {
-  base.reason = reason;
-  await attachScreenshot(base);
-  appendJournal(toJournal(base, journalKind(base.mode), null, null, null));
-  return base;
-}
-
 function toJournal(
   base: RoundResult,
   kind: JournalEntry["kind"],
   commandError: string | null,
-  uiChangedAfterTap: boolean | null,
-  timings: RoundTimings | null,
 ): JournalEntry {
   return {
     ts: Date.now(),
@@ -104,46 +82,78 @@ function toJournal(
     kind,
     decision: base.decision,
     reason: base.reason,
-    priceEur: base.priceEur,
-    priceConfidence: base.priceConfidence,
-    buttonScore: base.buttonScore,
-    buttonCenter: base.buttonCenter,
+    phase: base.phase,
+    timerSec: base.timerSec,
+    itemTitle: base.itemTitle,
+    currentPriceEur: base.currentPriceEur,
+    offerAmountEur: base.offerAmountEur,
+    offerCenter: base.offerCenter,
     limits: {
       maxBidEur: base.limits.maxBidEur,
       maxOffersPerAuction: base.limits.maxOffersPerAuction,
       offersSpent: base.offersSpent,
       confidenceThreshold: base.limits.confidenceThreshold,
     },
-    xmlFile: base.xmlFile,
+    readingFile: base.readingFile,
     screenshotFile: base.screenshotFile,
     commandError,
-    uiChangedAfterTap,
-    timings: timings ?? undefined,
+    verifyOutcome: base.verifyOutcome,
+    timings: base.timings,
   };
 }
 
-/**
- * Esegue UN round. Con mode="live" il tap reale avviene SOLO se superano
- * tutte le guardie (estop, dry-run, punteggio, prezzo, limiti).
- */
-export async function runRound(
-  serial: string,
-  mode: "evaluate" | "dry" | "live",
-): Promise<RoundResult> {
-  const config = loadConfig();
-  const timings = emptyTimings();
+function skip(base: RoundResult, reason: string): RoundResult {
+  base.decision = "skip";
+  base.reason = reason;
+  appendJournal(toJournal(base, journalKind(base.mode), null));
+  return base;
+}
 
-  const base: RoundResult = {
+/** Una lettura interpretata; lancia se screenshot o OCR falliscono. */
+async function readCard(
+  serial: string,
+  saveImage?: string,
+): Promise<{ reading: ScreenReading; card: AuctionCard | null; parseMs: number }> {
+  const reading = await readScreen(serial, { saveImage });
+  const t = now();
+  const card = parseAuctionCard(reading.lines, reading.width, reading.height);
+  return { reading, card, parseMs: elapsed(t) };
+}
+
+/** UN tap: sessione shell persistente, con ripiego su un adb dedicato. */
+async function sendTap(serial: string, x: number, y: number): Promise<void> {
+  try {
+    await runInShellSession(serial, `input tap ${x} ${y}`);
+  } catch {
+    await adbTap(serial, x, y);
+  }
+}
+
+function emptyResult(serial: string, mode: RoundResult["mode"]): RoundResult {
+  const config = loadConfig();
+  const timings: RoundTimings = {
+    captureMs: 0,
+    ocrMs: 0,
+    parseMs: 0,
+    decideMs: 0,
+    confirmMs: null,
+    tapMs: null,
+    verifyMs: null,
+  };
+  return {
     serial,
     mode,
     auctionId: null,
     decision: "skip",
     reason: "",
-    buttonScore: null,
-    buttonLabel: null,
-    buttonCenter: null,
-    priceEur: null,
-    priceConfidence: null,
+    phase: null,
+    timerSec: null,
+    itemTitle: null,
+    currentPriceEur: null,
+    offerAmountEur: null,
+    offerLabel: null,
+    offerCenter: null,
+    ocrConfidence: null,
     offersSpent: 0,
     limits: {
       maxBidEur: config.maxBidEur,
@@ -153,169 +163,133 @@ export async function runRound(
       dryRun: config.dryRun,
       estopEngaged: isEmergencyStopped(),
     },
-    xmlFile: null,
+    readingFile: null,
     screenshotFile: null,
+    verifyOutcome: null,
     uiChangedAfterTap: null,
     error: null,
     timings,
   };
+}
 
-  // Lock per device: se un round è già in corso, rifiuta senza accodare.
-  const locked = await withDeviceLock(serial, async (): Promise<RoundResult> => {
-    // ── 1. ACQUISIZIONE ────────────────────────────────────────────────
-    let xml = "";
-    try {
-      const t = now();
-      xml = await dumpUiHierarchy(serial);
-      timings.dumpMs = Math.round(now() - t);
-    } catch (err) {
-      base.error = err instanceof Error ? err.message : String(err);
-      return skipResult(base, "dump UI non riuscito");
-    }
-    base.xmlFile = saveXmlDump(serial, xml);
+async function lockedRound(base: RoundResult): Promise<RoundResult> {
+  const { serial, mode, timings } = base;
+  const config = loadConfig();
 
-    // ── 2. RICONOSCIMENTO ──────────────────────────────────────────────
-    const tParse = now();
-    const nodes: UiNode[] = parseUiHierarchy(xml);
-    const button = evaluateOfferButton(nodes, config.confidenceThreshold);
-    const offerNode: UiNode | null = button.node;
-    const price = estimateNextBid(
-      nodes,
-      offerNode,
-      config.priceConfidenceThreshold,
-    );
-    timings.parseMs = Math.round(now() - tParse);
+  // ── 1. LETTURA ─────────────────────────────────────────────────────────
+  let first: Awaited<ReturnType<typeof readCard>>;
+  try {
+    first = await readCard(serial, framePath(serial, "round", "decisione"));
+  } catch (err) {
+    base.error = errorMessage(err);
+    return skip(base, "lettura dello schermo non riuscita");
+  }
+  timings.captureMs = first.reading.captureMs;
+  timings.ocrMs = first.reading.ocrMs;
+  timings.parseMs = first.parseMs;
+  base.screenshotFile = first.reading.imageFile;
+  base.readingFile = saveReading(serial, first.reading, first.card);
+  applyCard(base, first.card);
 
-    base.buttonScore = offerNode ? button.score : null;
-    base.buttonLabel = offerNode
-      ? (offerNode.text || offerNode.contentDesc || null)
-      : null;
-    base.buttonCenter = offerNode ? offerNode.center : null;
-    base.priceEur = price ? price.amountEur : null;
-    base.priceConfidence = price ? price.confidence : null;
-
-    // ── 3. DECISIONE (fail-closed, in ordine di severità) ──────────────
-    const tDecide = now();
-    const auctionId = computeAuctionId(
-      uiSignature(nodes),
-      price ? [price.amountEur] : [],
-    );
-    base.auctionId = auctionId;
-    base.offersSpent = getOffersSpent(auctionId);
-
-    let proceed = true;
-    let reason = "";
-
-    if (isEmergencyStopped()) {
-      proceed = false;
-      reason = "ARRESTO DI EMERGENZA attivo — riarmare dall'interfaccia";
-    } else if (!offerNode) {
-      proceed = false;
-      reason = "pulsante Offri non individuato con confidenza sufficiente";
-    } else if (button.score < config.confidenceThreshold) {
-      proceed = false;
-      reason = `punteggio pulsante ${button.score} sotto soglia ${config.confidenceThreshold}`;
-    } else if (!price || price.confidence < config.priceConfidenceThreshold) {
-      proceed = false;
-      reason = "prezzo non leggibile con affidabilità sufficiente";
-    } else if (price.amountEur > config.maxBidEur) {
-      proceed = false;
-      reason = `prezzo ${price.amountEur}€ sopra il massimo consentito ${config.maxBidEur}€`;
-    } else if (base.offersSpent >= config.maxOffersPerAuction) {
-      proceed = false;
-      reason = `numero massimo di offerte per asta raggiunto (${base.offersSpent}/${config.maxOffersPerAuction})`;
-    }
-
-    timings.decideMs = Math.round(now() - tDecide);
-    if (!proceed) {
-      return skipResult(base, reason);
-    }
-
-    // Da qui in poi: condizioni OK. Il tap reale avviene SOLO in mode "live"
-    // E con dry-run disattivato in configurazione (doppia conferma).
-    if (mode !== "live" || config.dryRun) {
-      base.decision = "offer";
-      base.reason =
-        mode !== "live"
-          ? "condizioni soddisfatte (valutazione, nessun tap)"
-          : "condizioni soddisfatte — dry-run attivo in configurazione, nessun tap";
-      await attachScreenshot(base);
-      appendJournal(toJournal(base, journalKind(mode), null, null, timings));
-      return base;
-    }
-
-    // ── 4. TAP REALE (uno solo) ────────────────────────────────────────
-    if (!offerNode) {
-      // Difesa in profondità: irraggiungibile dopo le guardie sopra.
-      timings.decideMs = timings.decideMs ?? 0;
-      return skipResult(base, "stato interno incoerente (pulsante assente)");
-    }
-    const center = offerNode.center;
-    let tapError: string | null = null;
-    const tTap = now();
-    try {
-      try {
-        await runInShellSession(serial, `input tap ${center.x} ${center.y}`);
-      } catch {
-        // fallback: percorso classico (spawn adb dedicato)
-        await adbTap(serial, center.x, center.y);
-      }
-      timings.tapMs = Math.round(now() - tTap);
-    } catch (err) {
-      timings.tapMs = Math.round(now() - tTap);
-      tapError = err instanceof Error ? err.message : String(err);
-    }
-
-    let uiChanged: boolean | null = null;
-
-    if (tapError === null) {
-      // Fail-closed: il tap è stato inviato → conta come spesa anche se la
-      // verifica resta ambigua.
-      recordOfferSpent(auctionId);
-      base.offersSpent = getOffersSpent(auctionId);
-
-      await sleep(TAP_SETTLE_MS);
-      const tVerify = now();
-      try {
-        const xmlAfter = await dumpUiHierarchy(serial);
-        const afterNodes = parseUiHierarchy(xmlAfter);
-        uiChanged = uiSignature(afterNodes) !== uiSignature(nodes);
-        timings.verifyMs = Math.round(now() - tVerify);
-      } catch {
-        timings.verifyMs = Math.round(now() - tVerify);
-      }
-    }
-
-    try {
-      const shot = await captureAndSave(serial);
-      base.screenshotFile = shot.file;
-    } catch {
-      // screenshot non critico per la decisione
-    }
-
-    base.decision = tapError === null ? "offer" : "skip";
-    base.uiChangedAfterTap = uiChanged;
-    base.error = tapError;
-    base.reason =
-      tapError !== null
-        ? `errore durante il tap: ${tapError}`
-        : uiChanged === true
-          ? "tap eseguito — UI cambiata"
-          : uiChanged === false
-            ? "tap eseguito — UI invariata (verificare manualmente)"
-            : "tap eseguito — verifica UI non disponibile";
-
-    appendJournal(
-      toJournal(base, "offer", tapError, uiChanged, timings),
-    );
-    return base;
+  // ── 2. DECISIONE (guardie fail-closed) ─────────────────────────────────
+  const tDecide = now();
+  const itemKey = first.card?.itemKey ?? null;
+  base.auctionId = itemKey ? computeAuctionId(itemKey) : null;
+  base.offersSpent = itemKey ? getOffersSpentForItem(itemKey) : 0;
+  const verdict = assessCard(first.card, config, {
+    estop: isEmergencyStopped(),
+    offersSpent: base.offersSpent,
   });
+  timings.decideMs = elapsed(tDecide);
+  if (!verdict.ok) return skip(base, verdict.reason);
 
-  // Lock occupato: un round è già in volo per questo device.
-  return (
-    locked ?? {
-      ...base,
-      reason: "round già in corso per questo device (lock attivo)",
+  // ── 3. CONFERMA: seconda lettura subito prima di agire ─────────────────
+  const tConfirm = now();
+  let second: Awaited<ReturnType<typeof readCard>>;
+  try {
+    second = await readCard(serial, framePath(serial, "round", "conferma"));
+  } catch (err) {
+    timings.confirmMs = elapsed(tConfirm);
+    base.error = errorMessage(err);
+    return skip(base, "conferma fallita: lettura dello schermo non riuscita");
+  }
+  timings.confirmMs = elapsed(tConfirm);
+  const confirmed = second.card;
+  const confirmation = confirmCard(first.card, confirmed, config, {
+    estop: isEmergencyStopped(),
+    offersSpent: base.offersSpent,
+  });
+  if (!confirmation.ok) return skip(base, confirmation.reason);
+  // Da qui si agisce sulla lettura di conferma: valori, frame e righe OCR coerenti.
+  applyCard(base, confirmed);
+  base.screenshotFile = second.reading.imageFile;
+  base.readingFile = saveReading(serial, second.reading, confirmed);
+
+  // Il tap reale avviene SOLO in mode "live" E con dry-run spento (doppia conferma).
+  if (mode !== "live" || config.dryRun) {
+    base.decision = "offer";
+    base.reason =
+      mode !== "live"
+        ? "condizioni soddisfatte e confermate (valutazione, nessun tap)"
+        : "condizioni soddisfatte e confermate — dry-run attivo in configurazione, nessun tap";
+    appendJournal(toJournal(base, journalKind(mode), null));
+    return base;
+  }
+
+  // ── 4. TAP REALE (uno solo) ────────────────────────────────────────────
+  const target = confirmed?.offer;
+  if (!target || !base.auctionId || !itemKey) {
+    // Difesa in profondità: irraggiungibile dopo le guardie sopra.
+    return skip(base, "stato interno incoerente (pulsante assente)");
+  }
+  let tapError: string | null = null;
+  const tTap = now();
+  try {
+    await sendTap(serial, target.center.x, target.center.y);
+  } catch (err) {
+    tapError = errorMessage(err);
+  }
+  timings.tapMs = elapsed(tTap);
+
+  if (tapError === null) {
+    // Fail-closed: il tap è partito → conta come offerta anche se la verifica è incerta.
+    recordOfferSpent(base.auctionId, itemKey);
+    base.offersSpent = getOffersSpentForItem(itemKey);
+
+    // ── 5. VERIFICA sul prezzo ─────────────────────────────────────────
+    await sleep(VERIFY_DELAY_MS);
+    const tVerify = now();
+    try {
+      const after = await readCard(serial, framePath(serial, "round", "verifica"));
+      const verdictAfter = verifyOffer(target.amountEur, after.card);
+      base.verifyOutcome = verdictAfter.outcome;
+      base.uiChangedAfterTap = verdictAfter.changed;
+    } catch {
+      base.verifyOutcome = "verifica non disponibile";
     }
-  );
+    timings.verifyMs = elapsed(tVerify);
+  }
+
+  base.decision = tapError === null ? "offer" : "skip";
+  base.error = tapError;
+  base.reason =
+    tapError !== null
+      ? `errore durante il tap: ${tapError}`
+      : `tap eseguito su «${target.label}» — ${base.verifyOutcome ?? "verifica non disponibile"}`;
+  appendJournal(toJournal(base, "offer", tapError));
+  return base;
+}
+
+/**
+ * Esegue UN round. Con mode="live" il tap reale avviene SOLO se passano
+ * tutte le guardie su due letture consecutive e il dry-run è spento.
+ */
+export async function runRound(
+  serial: string,
+  mode: "evaluate" | "dry" | "live",
+): Promise<RoundResult> {
+  const base = emptyResult(serial, mode);
+  // Lock per device: se un round è già in corso, rifiuta senza accodare.
+  const locked = await withDeviceLock(serial, () => lockedRound(base));
+  return locked ?? { ...base, reason: "round già in corso per questo device (lock attivo)" };
 }

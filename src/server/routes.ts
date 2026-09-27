@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
-import { writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { listInstalledApps, launchApp } from "../adb/apps";
 import {
   pressKey,
@@ -16,6 +17,8 @@ import {
   parseUiHierarchy,
 } from "../adb/auction";
 import { captureAndSave } from "../adb/screenshots";
+import { framePath, saveReading } from "../auction/artifacts";
+import { parseAuctionCard } from "../auction/card";
 import { runRound } from "../auction/engine";
 import {
   loadConfig,
@@ -28,7 +31,9 @@ import { readJournal } from "../auction/journal";
 import { uiDumpsDir } from "../auction/base-dir";
 import type { DeviceManager } from "../devices/device-manager";
 import { scrcpyLauncher } from "../scrcpy/launcher";
-import type { AuctionAnalysis } from "../shared/types";
+import { formatTimings } from "../shared/format";
+import type { AuctionAnalysis, AuctionCard, UiNode } from "../shared/types";
+import { readScreen } from "../vision/ocr";
 import { activityLog } from "./logging";
 import type { WsHub } from "./ws";
 
@@ -38,9 +43,10 @@ import type { WsHub } from "./ws";
  * 2. chiama un servizio del command layer (mai shell sparse),
  * 3. logga l'esito.
  *
- * Sicurezza automazione: i tap reali passano SOLO da /auction/round con
- * mode=live, che applica TUTTE le guardie (estop, dry-run, punteggio,
- * prezzo, limiti) — fail-closed.
+ * Sicurezza automazione: i tap dell'automazione offerte passano SOLO da
+ * /auction/round con mode=live, che applica TUTTE le guardie (estop, dry-run,
+ * fase e timer, letture OCR, conferma, limiti) — fail-closed. /input/tap è il
+ * controllo manuale della dashboard, fuori dall'automazione.
  */
 
 function stampNow(): string {
@@ -49,6 +55,16 @@ function stampNow(): string {
 
 function safeSerial(serial: string): string {
   return serial.replace(/[^A-Za-z0-9._-]/g, "_");
+}
+
+function describeCard(card: AuctionCard | null): string {
+  if (!card) return "nessuna card asta";
+  const parts = [`fase ${card.phase}`];
+  if (card.timerSec !== null) parts.push(`timer ${card.timerSec}s`);
+  if (card.currentPriceEur !== null) parts.push(`prezzo ${card.currentPriceEur}€`);
+  if (card.offer) parts.push(`«${card.offer.label}»`);
+  if (card.itemTitle) parts.push(card.itemTitle);
+  return parts.join(", ");
 }
 
 interface Deps {
@@ -100,40 +116,51 @@ export function buildRouter(deps: Deps): Router {
     }
   });
 
-  // ── Diagnostica asta TikTok (uiautomator, sola lettura) ───────────────────
+  // ── Diagnostica asta TikTok (sola lettura) ────────────────────────────────
+  // Card letta via screenshot + OCR (affidabile anche sulle LIVE); dump
+  // uiautomator solo come dettaglio in più, best-effort.
   router.post("/devices/:serial/auction/analyze", async (req, res) => {
     try {
       const serial = requireSerial(req);
-      const xml = await dumpUiHierarchy(serial);
-      const nodes = parseUiHierarchy(xml);
-      const matches = findCandidateAuctionNodes(nodes);
+      const reading = await readScreen(serial, {
+        saveImage: framePath(serial, "analisi"),
+      });
+      const card = parseAuctionCard(reading.lines, reading.width, reading.height);
+      const readingFile = saveReading(serial, reading, card);
+      const imageFile = reading.imageFile as string;
 
-      const { mkdirSync } = await import("node:fs");
-      mkdirSync(uiDumpsDir(), { recursive: true });
-      const xmlFile = `${uiDumpsDir()}/window_${safeSerial(serial)}_${stampNow()}.xml`;
-      writeFileSync(xmlFile, xml, "utf8");
-
-      const screenshot = await captureAndSave(serial);
-
-      let width = 0;
-      let height = 0;
-      for (const n of nodes) {
-        if (n.bounds.x2 > width) width = n.bounds.x2;
-        if (n.bounds.y2 > height) height = n.bounds.y2;
+      let nodes: UiNode[] = [];
+      let xmlFile: string | null = null;
+      let dumpError: string | null = null;
+      try {
+        const xml = await dumpUiHierarchy(serial);
+        nodes = parseUiHierarchy(xml);
+        mkdirSync(uiDumpsDir(), { recursive: true });
+        xmlFile = join(uiDumpsDir(), `window_${safeSerial(serial)}_${stampNow()}.xml`);
+        writeFileSync(xmlFile, xml, "utf8");
+      } catch (err) {
+        dumpError = err instanceof Error ? err.message : String(err);
       }
 
       const analysis: AuctionAnalysis = {
-        screenshot,
+        screenshot: {
+          file: imageFile,
+          dataUrl: `data:image/jpeg;base64,${readFileSync(imageFile).toString("base64")}`,
+        },
+        card,
+        ocrLines: reading.lines,
+        readingFile,
         xmlFile,
+        dumpError,
         nodeCount: nodes.length,
-        matches,
+        matches: findCandidateAuctionNodes(nodes),
         clickableNodes: nodes.filter((n) => n.clickable).slice(0, 120),
-        screenSize: { width, height },
+        screenSize: { width: reading.width, height: reading.height },
       };
       activityLog.add(
-        matches.length > 0 ? "success" : "warn",
+        card ? "success" : "warn",
         "adb",
-        `Analisi schermata: ${nodes.length} nodi, ${matches.length} candidati Offri/offerta/€/prezzo — XML: ${xmlFile}`,
+        `Analisi schermata: ${describeCard(card)} · OCR ${reading.lines.length} righe (${reading.captureMs}+${reading.ocrMs} ms) · dump ${xmlFile ? `${nodes.length} nodi` : "non riuscito"} — ${readingFile}`,
       );
       ok(res, analysis);
     } catch (err) {
@@ -225,9 +252,7 @@ export function buildRouter(deps: Deps): Router {
         result.decision === "offer" ? "success" : "info",
         "server",
         `Round ${mode} su ${serial}: ${result.decision} — ${result.reason}` +
-          (result.timings
-            ? ` [dump ${result.timings.dumpMs}ms, parse ${result.timings.parseMs}ms, decide ${result.timings.decideMs}ms${result.timings.tapMs !== null ? `, tap ${result.timings.tapMs}ms` : ""}]`
-            : ""),
+          ` [${formatTimings(result.timings)}]`,
       );
       ok(res, result);
     } catch (err) {

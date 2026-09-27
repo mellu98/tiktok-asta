@@ -11,7 +11,8 @@
  *   npm run measure:latency -- --tap              → misura anche il tap REALE
  *                                                   (richiede conferma esplicita)
  *
- * Stampa min/avg/max per fase: dump, parse, decide, tap, verify.
+ * Stampa min/avg/max per fase: cattura (screenshot raw), OCR, parse,
+ * decisione, conferma (seconda lettura), totale; tap/verify solo con --tap.
  * NESSUN tap reale avviene senza il flag --tap.
  */
 
@@ -64,9 +65,12 @@ async function main(): Promise<void> {
     );
   }
 
-  const dump: number[] = [];
+  const capture: number[] = [];
+  const ocr: number[] = [];
   const parse: number[] = [];
   const decide: number[] = [];
+  const confirm: number[] = [];
+  const total: number[] = [];
   const tap: number[] = [];
   const verify: number[] = [];
 
@@ -77,25 +81,41 @@ async function main(): Promise<void> {
       console.log(`round ${i}: ERRORE — ${r.error}`);
       continue;
     }
-    dump.push(r.timings.dumpMs);
-    parse.push(r.timings.parseMs);
-    decide.push(r.timings.decideMs);
-    if (r.timings.tapMs !== null) tap.push(r.timings.tapMs);
-    if (r.timings.verifyMs !== null) verify.push(r.timings.verifyMs);
+    const t = r.timings;
+    capture.push(t.captureMs);
+    ocr.push(t.ocrMs);
+    parse.push(t.parseMs);
+    decide.push(t.decideMs);
+    if (t.confirmMs !== null) confirm.push(t.confirmMs);
+    total.push(t.captureMs + t.ocrMs + t.parseMs + t.decideMs + (t.confirmMs ?? 0));
+    if (t.tapMs !== null) tap.push(t.tapMs);
+    if (t.verifyMs !== null) verify.push(t.verifyMs);
+    const card = [
+      r.phase ?? "nessuna card",
+      r.timerSec !== null ? `${r.timerSec}s` : null,
+      r.currentPriceEur !== null ? `${r.currentPriceEur}€` : null,
+      r.offerLabel ? `«${r.offerLabel}»` : null,
+    ]
+      .filter(Boolean)
+      .join(" ");
     console.log(
-      `round ${i}: dump ${r.timings.dumpMs}ms · parse ${r.timings.parseMs}ms · decide ${r.timings.decideMs}ms · ${r.decision} (${r.reason})`,
+      `round ${i}: cattura ${t.captureMs}ms · OCR ${t.ocrMs}ms · parse ${t.parseMs}ms · decisione ${t.decideMs}ms` +
+        `${t.confirmMs !== null ? ` · conferma ${t.confirmMs}ms` : ""} · [${card}] → ${r.decision} (${r.reason})`,
     );
   }
 
   console.log("\n═══ RISULTATI ═══");
-  console.log(`dump:   ${fmt(stats(dump))}`);
-  console.log(`parse:  ${fmt(stats(parse))}`);
-  console.log(`decide: ${fmt(stats(decide))}`);
+  console.log(`cattura:   ${fmt(stats(capture))}`);
+  console.log(`OCR:       ${fmt(stats(ocr))}`);
+  console.log(`parse:     ${fmt(stats(parse))}`);
+  console.log(`decisione: ${fmt(stats(decide))}`);
+  console.log(`conferma:  ${fmt(stats(confirm))}${confirm.length === 0 ? " (nessun round ha superato le guardie)" : ""}`);
+  console.log(`totale:    ${fmt(stats(total))}`);
   if (wantTap) {
-    console.log(`tap:    ${fmt(stats(tap))}`);
-    console.log(`verify: ${fmt(stats(verify))}`);
+    console.log(`tap:       ${fmt(stats(tap))}`);
+    console.log(`verifica:  ${fmt(stats(verify))}`);
   } else {
-    console.log("tap/verify: non misurati (serve --tap, esegue tap reali)");
+    console.log("tap/verifica: non misurati (serve --tap, esegue tap reali)");
   }
 }
 

@@ -114,6 +114,8 @@ fn main() {
             let adb = tools.join("adb");
             let scrcpy = tools.join("scrcpy");
             let scrcpy_server = tools.join("scrcpy-server");
+            // Helper OCR (card asta): il server lo trova accanto ad adb.
+            let ocr = tools.join("ocr");
             if !adb.exists() || !scrcpy.exists() {
                 return Err("Tool adb/scrcpy mancanti nelle risorse dell'app".into());
             }
@@ -136,6 +138,7 @@ fn main() {
             clear_quarantine(&adb, &mut setup_log);
             clear_quarantine(&scrcpy, &mut setup_log);
             clear_quarantine(&scrcpy_server, &mut setup_log);
+            clear_quarantine(&ocr, &mut setup_log);
 
             // Token di sessione: senza di lui nessuno parla col server interno.
             let session_token = random_hex(24);

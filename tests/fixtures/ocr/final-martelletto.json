@@ -1,0 +1,135 @@
+{
+ "source": "Samsung SM-A057G, LIVE TikTok 27/09/2026 22:38:36, f0006_1790541516.928.jpg — righe fuori dalla card anonimizzate",
+ "w": 1080,
+ "h": 2400,
+ "lines": [
+  {
+   "text": "commento 1",
+   "conf": 1,
+   "x1": 127,
+   "y1": 1445,
+   "x2": 338,
+   "y2": 1486
+  },
+  {
+   "text": "commento 2",
+   "conf": 1,
+   "x1": 128,
+   "y1": 1517,
+   "x2": 226,
+   "y2": 1548
+  },
+  {
+   "text": "commento 3",
+   "conf": 1,
+   "x1": 125,
+   "y1": 1566,
+   "x2": 358,
+   "y2": 1601
+  },
+  {
+   "text": "commento 4",
+   "conf": 1,
+   "x1": 222,
+   "y1": 1652,
+   "x2": 505,
+   "y2": 1688
+  },
+  {
+   "text": "spettatore partecipa",
+   "conf": 1,
+   "x1": 526,
+   "y1": 1653,
+   "x2": 738,
+   "y2": 1702
+  },
+  {
+   "text": "commento 5",
+   "conf": 0.3,
+   "x1": 522,
+   "y1": 1685,
+   "x2": 633,
+   "y2": 1732
+  },
+  {
+   "text": "Contenuto promozionale",
+   "conf": 1,
+   "x1": 94,
+   "y1": 1744,
+   "x2": 491,
+   "y2": 1779
+  },
+  {
+   "text": ">8s",
+   "conf": 0.5,
+   "x1": 80,
+   "y1": 1845,
+   "x2": 146,
+   "y2": 1876
+  },
+  {
+   "text": "47€",
+   "conf": 1,
+   "x1": 323,
+   "y1": 1838,
+   "x2": 435,
+   "y2": 1887
+  },
+  {
+   "text": "ha fatto l'offerta più alta",
+   "conf": 1,
+   "x1": 505,
+   "y1": 1844,
+   "x2": 982,
+   "y2": 1887
+  },
+  {
+   "text": "Prolungata • #1 26- BORSA SAINT TROPE B...",
+   "conf": 1,
+   "x1": 324,
+   "y1": 1904,
+   "x2": 1010,
+   "y2": 1943
+  },
+  {
+   "text": "2 € di spedizione • Le offerte sono definitive",
+   "conf": 1,
+   "x1": 324,
+   "y1": 1952,
+   "x2": 1010,
+   "y2": 1991
+  },
+  {
+   "text": "Personalizzato",
+   "conf": 1,
+   "x1": 365,
+   "y1": 2026,
+   "x2": 637,
+   "y2": 2061
+  },
+  {
+   "text": "Offri 50 €",
+   "conf": 1,
+   "x1": 762,
+   "y1": 2021,
+   "x2": 951,
+   "y2": 2063
+  },
+  {
+   "text": "99+",
+   "conf": 1,
+   "x1": 62,
+   "y1": 2124,
+   "x2": 128,
+   "y2": 2155
+  },
+  {
+   "text": "Scrivi...",
+   "conf": 1,
+   "x1": 188,
+   "y1": 2162,
+   "x2": 338,
+   "y2": 2205
+  }
+ ]
+}
