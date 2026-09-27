@@ -152,6 +152,8 @@ export interface AuctionCard {
 export interface JournalEntry {
   ts: number;
   serial: string;
+  /** ID di correlazione del round (frame JPEG + righe OCR dello stesso round). */
+  runId: string | null;
   auctionId: string | null;
   kind: "evaluate" | "dry" | "offer";
   decision: "offer" | "skip";
@@ -192,6 +194,8 @@ export interface RoundTimings {
 export interface RoundResult {
     serial: string;
     mode: "evaluate" | "dry" | "live";
+    /** ID di correlazione: stesso id per frame JPEG e righe OCR del round. */
+    runId: string;
     auctionId: string | null;
     decision: "offer" | "skip";
     reason: string;
@@ -243,16 +247,20 @@ export interface UiNode {
 /** Risposta di POST /api/devices/:serial/auction/analyze */
 export interface AuctionAnalysis {
     screenshot: ScreenshotResult;
+    /** ID di correlazione (frame, righe OCR ed eventuale XML). */
+    runId?: string;
     /** Card asta letta via OCR (null = nessuna card sullo schermo). */
     card: AuctionCard | null;
     /** Righe OCR della metà bassa dello schermo. */
     ocrLines: OcrLine[];
     /** Percorso delle righe OCR salvate (JSON). */
     readingFile: string;
-    /** Percorso dell'XML uiautomator (null se il dump non è riuscito). */
+    /** false = gerarchia UI non disponibile (es. uiautomator non idle su TikTok LIVE). */
+    uiDumpAvailable?: boolean;
+    /** Dettaglio dell'errore di dump quando uiDumpAvailable è false. */
+    dumpError?: string;
+    /** Percorso dell'XML uiautomator (null se il dump non è disponibile). */
     xmlFile: string | null;
-    /** Perché il dump uiautomator non è riuscito (es. LIVE mai idle). */
-    dumpError: string | null;
     nodeCount: number;
     /** Nodi che contengono keyword dell'asta (Offri, €, prezzo…). */
     matches: UiNode[];

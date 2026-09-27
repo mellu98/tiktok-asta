@@ -24,7 +24,9 @@ export function setSafetyBaseDir(dir: string): void {
 function loadSafetyState(): SafetyState {
   if (cached) return cached;
   try {
-    const raw = JSON.parse(readFileSync(safetyFile(), "utf8")) as Partial<SafetyState>;
+    const raw = JSON.parse(
+      readFileSync(safetyFile(), "utf8"),
+    ) as Partial<SafetyState>;
     cached = {
       estopEngaged: raw.estopEngaged === true,
       engagedAt: typeof raw.engagedAt === "number" ? raw.engagedAt : null,
@@ -45,7 +47,11 @@ export function setEmergencyStop(
   reason: string | null = null,
 ): SafetyState {
   const next: SafetyState = engaged
-    ? { estopEngaged: true, engagedAt: Date.now(), reason: reason ?? "arresto di emergenza" }
+    ? {
+        estopEngaged: true,
+        engagedAt: Date.now(),
+        reason: reason ?? "arresto di emergenza",
+      }
     : { estopEngaged: false, engagedAt: null, reason: null };
   mkdirSync(dirname(safetyFile()), { recursive: true });
   writeFileSync(safetyFile(), `${JSON.stringify(next, null, 2)}\n`, "utf8");

@@ -17,14 +17,10 @@ import {
   parseUiHierarchy,
 } from "../adb/auction";
 import { captureAndSave } from "../adb/screenshots";
-import { framePath, saveReading } from "../auction/artifacts";
+import { framePath, newRunId, saveReading } from "../auction/artifacts";
 import { parseAuctionCard } from "../auction/card";
 import { runRound } from "../auction/engine";
-import {
-  loadConfig,
-  saveConfig,
-  type AuctionConfig,
-} from "../auction/config";
+import { loadConfig, saveConfig, type AuctionConfig } from "../auction/config";
 import { loadSafety, setEmergencyStop } from "../auction/safety";
 import { listAuctions, resetAuction } from "../auction/state";
 import { readJournal } from "../auction/journal";
@@ -48,10 +44,6 @@ import type { WsHub } from "./ws";
  * fase e timer, letture OCR, conferma, limiti) — fail-closed. /input/tap è il
  * controllo manuale della dashboard, fuori dall'automazione.
  */
-
-function stampNow(): string {
-  return new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-}
 
 function safeSerial(serial: string): string {
   return serial.replace(/[^A-Za-z0-9._-]/g, "_");
@@ -122,13 +114,16 @@ export function buildRouter(deps: Deps): Router {
   router.post("/devices/:serial/auction/analyze", async (req, res) => {
     try {
       const serial = requireSerial(req);
+      const runId = newRunId();
       const reading = await readScreen(serial, {
-        saveImage: framePath(serial, "analisi"),
+        saveImage: framePath(serial, "analisi", runId),
       });
       const card = parseAuctionCard(reading.lines, reading.width, reading.height);
-      const readingFile = saveReading(serial, reading, card);
+      const readingFile = saveReading(serial, runId, "analisi", reading, card);
       const imageFile = reading.imageFile as string;
 
+      // Dump uiautomator: dettaglio facoltativo. Sulle LIVE spesso non è
+      // disponibile (UI mai idle) → nessun nodo, la card OCR resta valida.
       let nodes: UiNode[] = [];
       let xmlFile: string | null = null;
       let dumpError: string | null = null;
@@ -136,7 +131,7 @@ export function buildRouter(deps: Deps): Router {
         const xml = await dumpUiHierarchy(serial);
         nodes = parseUiHierarchy(xml);
         mkdirSync(uiDumpsDir(), { recursive: true });
-        xmlFile = join(uiDumpsDir(), `window_${safeSerial(serial)}_${stampNow()}.xml`);
+        xmlFile = join(uiDumpsDir(), `ui_${safeSerial(serial)}_${runId}.xml`);
         writeFileSync(xmlFile, xml, "utf8");
       } catch (err) {
         dumpError = err instanceof Error ? err.message : String(err);
@@ -151,7 +146,9 @@ export function buildRouter(deps: Deps): Router {
         ocrLines: reading.lines,
         readingFile,
         xmlFile,
-        dumpError,
+        runId,
+        uiDumpAvailable: dumpError === null,
+        dumpError: dumpError ?? undefined,
         nodeCount: nodes.length,
         matches: findCandidateAuctionNodes(nodes),
         clickableNodes: nodes.filter((n) => n.clickable).slice(0, 120),
@@ -194,7 +191,8 @@ export function buildRouter(deps: Deps): Router {
 
   router.post("/auction/estop", (req, res) => {
     try {
-      const engaged = (req.body as { engaged?: boolean } | undefined)?.engaged === true;
+      const engaged =
+        (req.body as { engaged?: boolean } | undefined)?.engaged === true;
       const reason =
         (req.body as { reason?: string } | undefined)?.reason ?? null;
       const safety = setEmergencyStop(engaged, reason);
@@ -230,10 +228,7 @@ export function buildRouter(deps: Deps): Router {
   });
 
   router.get("/auction/journal", (req, res) => {
-    const limit = Math.min(
-      500,
-      Math.max(1, Number(req.query.limit) || 50),
-    );
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 50));
     ok(res, readJournal(limit));
   });
 
@@ -380,13 +375,11 @@ export function buildRouter(deps: Deps): Router {
           activityLog.add("success", "scrcpy", `Mirroring attivo (${s})`);
           wsHub.broadcast({ type: "scrcpy", serial: s, status: "running" });
         },
-        onExit: (s, code, detail) => {
+        onExit: (s, code, stderrTail) => {
           activityLog.add(
-            detail ? "error" : "info",
+            "info",
             "scrcpy",
-            detail
-              ? `Mirroring fallito (${s}) — ${detail}`
-              : `Mirroring terminato (${s}), codice ${code ?? "?"}`,
+            `Mirroring terminato (${s}), codice ${code ?? "?"}${stderrTail ? ` — ${stderrTail}` : ""}`,
           );
           wsHub.broadcast({
             type: "scrcpy",

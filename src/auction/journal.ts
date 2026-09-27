@@ -25,7 +25,9 @@ export function appendJournal(entry: JournalEntry): void {
 export function readJournal(limit = 50): JournalEntry[] {
   const file = journalFilePath();
   if (!existsSync(file)) return [];
-  const lines = readFileSync(file, "utf8").split("\n").filter((l) => l.trim());
+  const lines = readFileSync(file, "utf8")
+    .split("\n")
+    .filter((l) => l.trim());
   return lines
     .slice(-limit)
     .map((l) => {

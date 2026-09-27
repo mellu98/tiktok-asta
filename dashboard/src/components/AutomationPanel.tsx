@@ -81,7 +81,9 @@ export function AutomationPanel({ serial, onError }: Props) {
             <button
               className="btn"
               disabled={busy}
-              onClick={() => void guard(() => Api.setEstop(false).then(() => {}))}
+              onClick={() =>
+                void guard(() => Api.setEstop(false).then(() => {}))
+              }
             >
               Rearma
             </button>
@@ -91,12 +93,14 @@ export function AutomationPanel({ serial, onError }: Props) {
             <span className="estop-label">
               {config?.dryRun === false
                 ? "Tap reali abilitati (limiti attivi)"
-                : "Dry-run attivo — nessun tap reale"}
+                : "DRY-RUN — nessun input reale verrà inviato"}
             </span>
             <button
               className="btn danger"
               disabled={busy}
-              onClick={() => void guard(() => Api.setEstop(true).then(() => {}))}
+              onClick={() =>
+                void guard(() => Api.setEstop(true).then(() => {}))
+              }
             >
               ⛔ STOP EMERGENZA
             </button>
@@ -112,7 +116,9 @@ export function AutomationPanel({ serial, onError }: Props) {
               type="number"
               min={0}
               value={config.maxBidEur}
-              onChange={(e) => updateConfig({ maxBidEur: Number(e.target.value) })}
+              onChange={(e) =>
+                updateConfig({ maxBidEur: Number(e.target.value) })
+              }
             />
           </label>
           <label>
@@ -146,7 +152,9 @@ export function AutomationPanel({ serial, onError }: Props) {
               max={100}
               value={config.priceConfidenceThreshold}
               onChange={(e) =>
-                updateConfig({ priceConfidenceThreshold: Number(e.target.value) })
+                updateConfig({
+                  priceConfidenceThreshold: Number(e.target.value),
+                })
               }
             />
           </label>
@@ -158,7 +166,11 @@ export function AutomationPanel({ serial, onError }: Props) {
             />
             Dry-run (nessun tap reale)
           </label>
-          <button className="btn" disabled={busy} onClick={() => void guard(save)}>
+          <button
+            className="btn"
+            disabled={busy}
+            onClick={() => void guard(save)}
+          >
             💾 Salva limiti
           </button>
         </div>
@@ -168,14 +180,22 @@ export function AutomationPanel({ serial, onError }: Props) {
         <button
           className="btn"
           disabled={busy}
-          onClick={() => void guard(() => Api.round(serial, "evaluate").then((r) => setLastRound(r)))}
+          onClick={() =>
+            void guard(() =>
+              Api.round(serial, "evaluate").then((r) => setLastRound(r)),
+            )
+          }
         >
           🔍 Valuta round
         </button>
         <button
           className="btn"
           disabled={busy}
-          onClick={() => void guard(() => Api.round(serial, "dry").then((r) => setLastRound(r)))}
+          onClick={() =>
+            void guard(() =>
+              Api.round(serial, "dry").then((r) => setLastRound(r)),
+            )
+          }
         >
           🧪 Dry run round
         </button>
@@ -188,8 +208,12 @@ export function AutomationPanel({ serial, onError }: Props) {
               : undefined
           }
           onClick={() => {
-            if (window.confirm("Eseguire UN SOLO tap reale sul pulsante Offri?")) {
-              void guard(() => Api.round(serial, "live").then((r) => setLastRound(r)));
+            if (
+              window.confirm("Eseguire UN SOLO tap reale sul pulsante Offri?")
+            ) {
+              void guard(() =>
+                Api.round(serial, "live").then((r) => setLastRound(r)),
+              );
             }
           }}
         >
@@ -198,7 +222,9 @@ export function AutomationPanel({ serial, onError }: Props) {
         <button
           className="btn"
           disabled={busy}
-          onClick={() => void guard(() => Api.resetAuction(null).then(() => {}))}
+          onClick={() =>
+            void guard(() => Api.resetAuction(null).then(() => {}))
+          }
         >
           ♻ Nuova asta
         </button>
@@ -225,7 +251,9 @@ export function AutomationPanel({ serial, onError }: Props) {
             {journal.map((j, i) => (
               <div key={`${j.ts}-${i}`} className="journal-row">
                 <span className="log-ts">
-                  {new Date(j.ts).toLocaleTimeString("it-IT", { hour12: false })}
+                  {new Date(j.ts).toLocaleTimeString("it-IT", {
+                    hour12: false,
+                  })}
                 </span>
                 <span className={`journal-kind ${j.decision}`}>
                   {j.kind}/{j.decision}

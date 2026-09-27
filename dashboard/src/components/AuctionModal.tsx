@@ -126,7 +126,7 @@ export function AuctionModal({ analysis, round, onDryRun, onLive, onClose }: Pro
               dump uiautomator {analysis.nodeCount} nodi: <code>{analysis.xmlFile}</code>
             </>
           ) : (
-            <>dump uiautomator non riuscito ({analysis.dumpError})</>
+            <>dump uiautomator non disponibile</>
           )}
         </p>
 
@@ -145,7 +145,25 @@ export function AuctionModal({ analysis, round, onDryRun, onLive, onClose }: Pro
           <h3>
             Nodi uiautomator con keyword asta ({analysis.matches.length})
           </h3>
-          {analysis.matches.length === 0 ? (
+          {analysis.uiDumpAvailable === false ? (
+            <div className="offer-panel warnp">
+              <p>
+                <strong>
+                  Gerarchia UI non disponibile su questa schermata
+                </strong>
+              </p>
+              <p className="note">
+                uiautomator non riesce a leggere la UI (tipico su TikTok LIVE:
+                schermo in movimento). Nessun candidato derivato da XML
+                vecchi. La card asta è letta via OCR nella sezione sopra.
+              </p>
+              {analysis.dumpError && (
+                <p className="note">
+                  <code>{analysis.dumpError}</code>
+                </p>
+              )}
+            </div>
+          ) : analysis.matches.length === 0 ? (
             <p className="note">
               Nessun nodo con keyword asta nell'albero uiautomator (sulle LIVE
               la card non è esposta): la decisione usa la lettura OCR sopra.
@@ -168,7 +186,9 @@ export function AuctionModal({ analysis, round, onDryRun, onLive, onClose }: Pro
           {round && mode !== "live" && decision === "offer" && (
             <div className="offer-panel ok">
               <p>
-                <strong>Condizioni soddisfatte (dry — nessun tap eseguito)</strong>
+                <strong>
+                  Condizioni soddisfatte (dry — nessun tap eseguito)
+                </strong>
               </p>
               <p className="note">
                 «{round.offerLabel}» → {euro(round.offerAmountEur)} · centro (

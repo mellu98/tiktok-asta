@@ -17,7 +17,10 @@ export class WsHub {
   }
 
   /** Attacca l'upgrade handling a un server HTTP (solo path /ws). */
-  attach(server: import("node:http").Server, sessionToken?: string | null): void {
+  attach(
+    server: import("node:http").Server,
+    sessionToken?: string | null,
+  ): void {
     server.on(
       "upgrade",
       (req: IncomingMessage, socket: Duplex, head: Buffer) => {

@@ -9,41 +9,41 @@ import { join } from "node:path";
 let dataDir = process.env.POC_DATA_DIR || process.cwd();
 
 export function setDataDir(dir: string): void {
-  dataDir = dir;
+ dataDir = dir;
 }
 
 export function getDataDir(): string {
-  return dataDir;
+ return dataDir;
 }
 
 export function screenshotsDir(): string {
-  return join(dataDir, "screenshots");
+ return join(dataDir, "screenshots");
 }
 
 export function uiDumpsDir(): string {
-  return join(dataDir, "ui-dumps");
+ return join(dataDir, "ui-dumps");
 }
 
 export function logsDir(): string {
-  return join(dataDir, "logs");
+ return join(dataDir, "logs");
 }
 
 export function configFile(): string {
-  return join(dataDir, "auction-config.json");
+ return join(dataDir, "auction-config.json");
 }
 
 export function safetyFile(): string {
-  return join(dataDir, "auction-safety.json");
+ return join(dataDir, "auction-safety.json");
 }
 
 export function stateFile(): string {
-  return join(dataDir, "auction-state.json");
+ return join(dataDir, "auction-state.json");
 }
 
 export function journalFile(): string {
-  return join(logsDir(), "auction-journal.jsonl");
+ return join(logsDir(), "auction-journal.jsonl");
 }
 
 export function sessionFile(): string {
-  return join(dataDir, "session.json");
+ return join(dataDir, "session.json");
 }

@@ -11,7 +11,7 @@
  */
 
 import { performance } from "node:perf_hooks";
-import { framePath, saveReading } from "./artifacts";
+import { framePath, newRunId, saveReading } from "./artifacts";
 import { parseAuctionCard } from "./card";
 import { loadConfig } from "./config";
 import { assessCard, confirmCard, verifyOffer } from "./decide";
@@ -78,6 +78,7 @@ function toJournal(
   return {
     ts: Date.now(),
     serial: base.serial,
+    runId: base.runId,
     auctionId: base.auctionId,
     kind,
     decision: base.decision,
@@ -143,6 +144,7 @@ function emptyResult(serial: string, mode: RoundResult["mode"]): RoundResult {
   return {
     serial,
     mode,
+    runId: newRunId(),
     auctionId: null,
     decision: "skip",
     reason: "",
@@ -173,13 +175,13 @@ function emptyResult(serial: string, mode: RoundResult["mode"]): RoundResult {
 }
 
 async function lockedRound(base: RoundResult): Promise<RoundResult> {
-  const { serial, mode, timings } = base;
+  const { serial, mode, runId, timings } = base;
   const config = loadConfig();
 
   // ── 1. LETTURA ─────────────────────────────────────────────────────────
   let first: Awaited<ReturnType<typeof readCard>>;
   try {
-    first = await readCard(serial, framePath(serial, "round", "decisione"));
+    first = await readCard(serial, framePath(serial, "round", runId, "decisione"));
   } catch (err) {
     base.error = errorMessage(err);
     return skip(base, "lettura dello schermo non riuscita");
@@ -188,7 +190,7 @@ async function lockedRound(base: RoundResult): Promise<RoundResult> {
   timings.ocrMs = first.reading.ocrMs;
   timings.parseMs = first.parseMs;
   base.screenshotFile = first.reading.imageFile;
-  base.readingFile = saveReading(serial, first.reading, first.card);
+  base.readingFile = saveReading(serial, runId, "decisione", first.reading, first.card);
   applyCard(base, first.card);
 
   // ── 2. DECISIONE (guardie fail-closed) ─────────────────────────────────
@@ -207,7 +209,7 @@ async function lockedRound(base: RoundResult): Promise<RoundResult> {
   const tConfirm = now();
   let second: Awaited<ReturnType<typeof readCard>>;
   try {
-    second = await readCard(serial, framePath(serial, "round", "conferma"));
+    second = await readCard(serial, framePath(serial, "round", runId, "conferma"));
   } catch (err) {
     timings.confirmMs = elapsed(tConfirm);
     base.error = errorMessage(err);
@@ -223,7 +225,7 @@ async function lockedRound(base: RoundResult): Promise<RoundResult> {
   // Da qui si agisce sulla lettura di conferma: valori, frame e righe OCR coerenti.
   applyCard(base, confirmed);
   base.screenshotFile = second.reading.imageFile;
-  base.readingFile = saveReading(serial, second.reading, confirmed);
+  base.readingFile = saveReading(serial, runId, "conferma", second.reading, confirmed);
 
   // Il tap reale avviene SOLO in mode "live" E con dry-run spento (doppia conferma).
   if (mode !== "live" || config.dryRun) {
@@ -260,7 +262,7 @@ async function lockedRound(base: RoundResult): Promise<RoundResult> {
     await sleep(VERIFY_DELAY_MS);
     const tVerify = now();
     try {
-      const after = await readCard(serial, framePath(serial, "round", "verifica"));
+      const after = await readCard(serial, framePath(serial, "round", runId, "verifica"));
       const verdictAfter = verifyOffer(target.amountEur, after.card);
       base.verifyOutcome = verdictAfter.outcome;
       base.uiChangedAfterTap = verdictAfter.changed;

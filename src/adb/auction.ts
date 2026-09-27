@@ -1,5 +1,4 @@
-import type { ClickOfferResult, UiNode } from "../shared/types";
-import { tap } from "./commands";
+import type { UiNode } from "../shared/types";
 import { execAdbText } from "./client";
 
 /**
@@ -15,72 +14,102 @@ import { execAdbText } from "./client";
  */
 
 const DUMP_TIMEOUT_MS = 20000; // uiautomator può metterci parecchi secondi
-const DUMP_RETRY_DELAY_MS = 1500;
-const TAP_SETTLE_MS = 2000;
-
-/** uiautomator ha già atteso ~10 s la UI ferma: riprovare non serve. */
-const IDLE_ERROR_RE = /could not get idle state/i;
 
 /**
- * Comando lato device per UN dump: file univoco per invocazione ($$ = PID
- * della shell del device), rimosso prima e dopo. Un dump fallito non può più
- * restituire l'XML lasciato da un dump precedente (altra schermata).
- * uiautomator scrive gli errori su stderr, che adb (shell protocol v2) tiene
- * separato: 2>&1 li porta nello stdout che il client legge.
+ * Esegue il dump UI con path remoto univoco e legge l'XML SOLO se fresco.
+ * FAIL-CLOSED: mai XML di tentativi precedenti; retry con nonce nuovo.
  */
-export function buildUiDumpCommand(): string {
-  return 'f=/sdcard/adc_ui_$$.xml; rm -f "$f"; uiautomator dump "$f" 2>&1; cat "$f" 2>/dev/null; rm -f "$f"';
-}
-
-/**
- * Estrae l'XML dall'output combinato dump + cat. FAIL-CLOSED: uiautomator
- * esce con codice 0 anche quando fallisce, quindi qualunque ERROR prima
- * dell'XML, XML assente o troncato → eccezione, mai un XML "di ripiego".
- */
-export function extractUiDumpXml(output: string): string {
-  const header = output.indexOf("<?xml");
-  const xmlStart = header !== -1 ? header : output.indexOf("<hierarchy");
-  const preamble = xmlStart === -1 ? output : output.slice(0, xmlStart);
-  const detail = preamble.trim().slice(0, 200);
-
-  if (/ERROR/i.test(preamble)) {
-    if (IDLE_ERROR_RE.test(preamble)) {
-      throw new Error(
-        `uiautomator non riesce a leggere la UI: la schermata non si ferma mai (es. video LIVE), stato idle non raggiunto. Dettaglio: ${detail}`,
-      );
-    }
-    throw new Error(`uiautomator dump fallito: ${detail}`);
-  }
-  if (xmlStart === -1) {
-    throw new Error(`uiautomator dump: risposta inattesa: ${detail}`);
-  }
-  const xml = output.slice(xmlStart);
-  if (!/<\/hierarchy>\s*$/.test(xml)) {
-    throw new Error("uiautomator dump: XML incompleto o troncato");
-  }
-  return xml;
-}
-
-/**
- * Esegue `uiautomator dump` e legge l'XML in UN SOLO spawn adb
- * (dump + cat combinati nella stessa shell del device → meno round-trip).
- * Un solo retry per risposte inattese; nessun retry se la UI non è mai idle.
- */
-export async function dumpUiHierarchy(serial: string): Promise<string> {
+export async function dumpUiHierarchy(
+  serial: string,
+  attempts = 2,
+): Promise<string> {
   let lastError: Error | null = null;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    if (attempt > 0) await sleep(DUMP_RETRY_DELAY_MS);
-    const out = await execAdbText(["-s", serial, "shell", buildUiDumpCommand()], {
-      timeoutMs: DUMP_TIMEOUT_MS,
-    });
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    // nonce fresco per OGNI tentativo → nessun riutilizzo del file precedente
+    const { command, remotePath } = buildDumpCommand(generateDumpNonce());
+    let out: string;
     try {
-      return extractUiDumpXml(out);
+      out = await execAdbText(["-s", serial, "shell", command], {
+        timeoutMs: DUMP_TIMEOUT_MS,
+      });
+    } catch (err) {
+      lastError =
+        err instanceof Error ? err : new Error("spawn adb fallito: " + String(err));
+      if (attempt < attempts - 1) await sleep(1500);
+      continue;
+    }
+    try {
+      return extractFreshXml(out, remotePath);
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
-      if (IDLE_ERROR_RE.test(out)) break;
+      if (attempt < attempts - 1) await sleep(1500);
     }
   }
   throw lastError ?? new Error("uiautomator dump non riuscito");
+}
+
+/**
+ * Nonce univoco per il path remoto del dump: OGNI tentativo usa un file
+ * diverso, così un XML precedente non può mai essere confuso con uno fresco.
+ */
+export function generateDumpNonce(): string {
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * Comando combinato (un solo spawn adb):
+ *   rm -f <p>            → il path NON può pre-esistere
+ *   uiautomator dump <p> && cat <p>   → cat SOLO se dump è riuscito
+ *   rm -f <p>            → cleanup best-effort
+ */
+export function buildDumpCommand(nonce: string): {
+  command: string;
+  remotePath: string;
+} {
+  const remotePath = `/sdcard/poc_ui_${nonce}.xml`;
+  const command = [
+    `rm -f '${remotePath}'`,
+    `uiautomator dump '${remotePath}' && cat '${remotePath}'`,
+    `rm -f '${remotePath}'`,
+  ].join("; ");
+  return { command, remotePath };
+}
+
+/**
+ * Estrae l'XML SOLO se l'output dimostra un dump fresco e completo.
+ * FAIL-CLOSED: qualunque dubbio → throw (mai XML di tentativi precedenti).
+ */
+export function extractFreshXml(output: string, remotePath: string): string {
+  // 1. ERROR anywhere (es. "ERROR: could not get idle state") → fallimento,
+  //    indipendentemente da qualunque XML presente nell'output.
+  if (/^ERROR:/m.test(output)) {
+    throw new Error(`uiautomator ERROR: ${output.trim().slice(0, 200)}`);
+  }
+  // 2. il comando deve confermare AVER PRODOTTO QUEL file
+  if (!output.includes(`dumped to: ${remotePath}`)) {
+    throw new Error(
+      `dump non confermato per ${remotePath} (nessuna riga "dumped to")`,
+    );
+  }
+  // 3. XML completo e plausibile
+  const xmlStart = Math.min(
+    ...[output.indexOf("<?xml"), output.indexOf("<hierarchy")].filter(
+      (i) => i !== -1,
+    ),
+  );
+  if (!Number.isFinite(xmlStart)) {
+    throw new Error("output senza XML riconoscibile");
+  }
+  const endTag = "</hierarchy>";
+  const end = output.indexOf(endTag, xmlStart);
+  if (end === -1) {
+    throw new Error("XML troncato (manca </hierarchy>) — scartato");
+  }
+  const xml = output.slice(xmlStart, end + endTag.length);
+  if (!xml.includes("<node")) {
+    throw new Error("XML senza nodi — scartato");
+  }
+  return xml;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -196,58 +225,4 @@ export function uiSignature(nodes: UiNode[]): string {
     // comparatore esplicito sui codepoint: firma stabile a prescindere dal locale
     .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   return `${nodes.length}|${texts.join("|").slice(0, 400)}`;
-}
-
-export interface ClickOfferOptions {
-  /** Default true: logga nodo+coordinate SENZA cliccare. */
-  dryRun?: boolean;
-}
-
-/**
- * FASE 3 minimale: trova il pulsante Offri e — solo con dryRun esplicitamente
- * false — fa UN SOLO tap reale usando il layer di input esistente, poi
- * riverifica l'albero per vedere se lo stato è cambiato.
- */
-export async function clickOffer(
-  serial: string,
-  opts: ClickOfferOptions = {},
-): Promise<ClickOfferResult> {
-  const dryRun = opts.dryRun !== false;
-  const xml = await dumpUiHierarchy(serial);
-  const nodes = parseUiHierarchy(xml);
-  const node = pickOfferButton(nodes);
-
-  if (!node) {
-    return {
-      status: "not-found",
-      candidates: findCandidateAuctionNodes(nodes),
-    };
-  }
-
-  if (dryRun) {
-    return {
-      status: "dry-run",
-      node,
-      center: node.center,
-      candidates: findCandidateAuctionNodes(nodes),
-    };
-  }
-
-  const before = { nodeCount: nodes.length, signature: uiSignature(nodes) };
-  await tap(serial, node.center.x, node.center.y);
-  await sleep(TAP_SETTLE_MS);
-
-  const xmlAfter = await dumpUiHierarchy(serial);
-  const afterNodes = parseUiHierarchy(xmlAfter);
-  return {
-    status: "tapped",
-    node,
-    center: node.center,
-    candidates: findCandidateAuctionNodes(nodes),
-    before,
-    after: {
-      nodeCount: afterNodes.length,
-      signature: uiSignature(afterNodes),
-    },
-  };
 }

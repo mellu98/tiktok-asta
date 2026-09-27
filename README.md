@@ -82,7 +82,7 @@ Guida per tester passo-passo: [docs/TESTER-MACOS.md](docs/TESTER-MACOS.md)
 | `npm run app:fetch-tools` | scarica adb/scrcpy ufficiali + compila il sidecar server |
 | `npm run setup` | guida interattiva all'installazione (macOS) |
 | `npm run doctor` | diagnostica completa ambiente + telefono |
-| `npm run measure:latency` | latenze dump/parse/decide su device reale, senza tap (`-- --serial <seriale>` con più device) |
+| `npm run measure:latency` | latenze cattura/OCR/parse/decisione/conferma su device reale, solo lettura (`-- --serial <seriale>` con più device) |
 | `npm run dev` | server + dashboard in modalità sviluppo |
 | `npm run build` | build di produzione della dashboard |
 | `npm start` | server che serve la dashboard buildata (<http://localhost:5175>) |
@@ -113,10 +113,14 @@ Dettagli e motivazioni: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - Server bindato solo su `127.0.0.1`: nessuna porta esposta su Internet.
 - Nessuna credenziale nel repository (vedi `.env.example` per le variabili opzionali).
 - Comandi adb eseguiti con `execFile` (no shell) + input sanitizzato.
-- Automazione offerte (`src/auction/`) **fail-closed**: default sicuri (dry-run attivo,
-  offerta massima 0 €, 0 offerte per asta), arresto di emergenza persistente; il tap
-  reale avviene solo con round LIVE **e** dry-run disattivato. Nessun bypass di
-  controlli anti-abuse, spoofing o mascheramento di attività.
+- Il progetto è una piattaforma di **controllo e test Android** che include un
+  percorso di **analisi e dry-run** per le aste TikTok LIVE (card letta via
+  screenshot + OCR, fasi e timer, limite di offerte per articolo, seconda lettura
+  di conferma, arresto di emergenza): il dry-run è il default, i tap reali
+  richiedono conferma esplicita e sono **non ancora validati su hardware reale**
+  (la lettura sì: vedi [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)). Ogni round
+  parte solo su richiesta: nessuna automazione di offerte end-to-end, nessun bypass
+  di controlli anti-abuse, spoofing o mascheramento di attività.
 
 ## Roadmap
 

@@ -38,7 +38,7 @@ cp -R "$APP" /tmp/ADC-packaged-test.app
 
 # Il server interno comunica porta+token sul stdout (marker nel log app)
 LOG="$HOME/Library/Logs/com.mellu98.android-device-control/poc-server.log"
-: > "$LOG" 2>/dev/null || true
+: >"$LOG" 2>/dev/null || true
 open /tmp/ADC-packaged-test.app
 
 HEALTH_OK=0
@@ -70,8 +70,8 @@ echo "═══ 6. Endpoint automazione (device FAKE → errore gestito) ══�
 RESP=$(curl -s -X POST "http://127.0.0.1:$PORT/api/devices/FAKE/auction/round" \
   "${AUTH[@]}" -d '{"mode":"evaluate"}' || true)
 case "$RESP" in
-  *error*) echo "✓ endpoint round presente (errore atteso su device FAKE): $RESP" ;;
-  *) echo "✗ endpoint round non risponde: $RESP" >&2 ;;
+*error*) echo "✓ endpoint round presente (errore atteso su device FAKE): $RESP" ;;
+*) echo "✗ endpoint round non risponde: $RESP" >&2 ;;
 esac
 
 echo "═══ 6b. Guardie: estop attivo → round bloccato ═══"

@@ -128,30 +128,43 @@ export const Api = {
       `/api/devices/${encodeURIComponent(serial)}/scrcpy/start`,
       { method: "POST" },
     ),
-  adbRestart: () => api<{ restarted: boolean }>("/api/adb/restart", { method: "POST" }),
+  adbRestart: () =>
+    api<{ restarted: boolean }>("/api/adb/restart", { method: "POST" }),
   tap: (serial: string, x: number, y: number) =>
-    api<{ done: boolean }>(`/api/devices/${encodeURIComponent(serial)}/input/tap`, {
-      method: "POST",
-      body: JSON.stringify({ x, y }),
-    }),
+    api<{ done: boolean }>(
+      `/api/devices/${encodeURIComponent(serial)}/input/tap`,
+      {
+        method: "POST",
+        body: JSON.stringify({ x, y }),
+      },
+    ),
   swipe: (
     serial: string,
     v: { x1: number; y1: number; x2: number; y2: number; durationMs: number },
   ) =>
-    api<{ done: boolean }>(`/api/devices/${encodeURIComponent(serial)}/input/swipe`, {
-      method: "POST",
-      body: JSON.stringify(v),
-    }),
+    api<{ done: boolean }>(
+      `/api/devices/${encodeURIComponent(serial)}/input/swipe`,
+      {
+        method: "POST",
+        body: JSON.stringify(v),
+      },
+    ),
   text: (serial: string, text: string) =>
-    api<{ sent: string }>(`/api/devices/${encodeURIComponent(serial)}/input/text`, {
-      method: "POST",
-      body: JSON.stringify({ text }),
-    }),
+    api<{ sent: string }>(
+      `/api/devices/${encodeURIComponent(serial)}/input/text`,
+      {
+        method: "POST",
+        body: JSON.stringify({ text }),
+      },
+    ),
   key: (serial: string, key: HardwareKey) =>
-    api<{ done: boolean }>(`/api/devices/${encodeURIComponent(serial)}/input/key`, {
-      method: "POST",
-      body: JSON.stringify({ key }),
-    }),
+    api<{ done: boolean }>(
+      `/api/devices/${encodeURIComponent(serial)}/input/key`,
+      {
+        method: "POST",
+        body: JSON.stringify({ key }),
+      },
+    ),
 
   // ── Automazione asta ────────────────────────────────────────────────────
   auctionAnalyze: (serial: string) =>
@@ -160,10 +173,13 @@ export const Api = {
       { method: "POST" },
     ),
   round: (serial: string, mode: "evaluate" | "dry" | "live") =>
-    api<RoundResult>(`/api/devices/${encodeURIComponent(serial)}/auction/round`, {
-      method: "POST",
-      body: JSON.stringify({ mode }),
-    }),
+    api<RoundResult>(
+      `/api/devices/${encodeURIComponent(serial)}/auction/round`,
+      {
+        method: "POST",
+        body: JSON.stringify({ mode }),
+      },
+    ),
   auctionState: () =>
     api<{
       config: AuctionConfig;
@@ -185,5 +201,6 @@ export const Api = {
       method: "POST",
       body: JSON.stringify({ auctionId }),
     }),
-  journal: (limit = 30) => api<JournalEntry[]>(`/api/auction/journal?limit=${limit}`),
+  journal: (limit = 30) =>
+    api<JournalEntry[]>(`/api/auction/journal?limit=${limit}`),
 };

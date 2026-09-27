@@ -127,11 +127,7 @@ fn main() {
                 .unwrap_or_default();
             let sidecar_path: PathBuf = exe_dir.join("poc-server");
             if !sidecar_path.exists() {
-                return Err(format!(
-                    "Sidecar non trovato in {}",
-                    sidecar_path.display()
-                )
-                .into());
+                return Err(format!("Sidecar non trovato in {}", sidecar_path.display()).into());
             }
 
             clear_quarantine(&sidecar_path, &mut setup_log);
@@ -177,23 +173,16 @@ fn main() {
                         match event {
                             CommandEvent::Stdout(line) => {
                                 let text = String::from_utf8_lossy(&line).to_string();
-                                if let Some(rest) =
-                                    text.strip_prefix("#[tauri-session] ")
-                                {
-                                    if let Ok(v) =
-                                        serde_json::from_str::<serde_json::Value>(rest)
-                                    {
+                                if let Some(rest) = text.strip_prefix("#[tauri-session] ") {
+                                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(rest) {
                                         *state_handle.0.lock().unwrap() = Some(v.clone());
                                     }
                                 }
                                 let _ = writeln!(file, "{text}");
                             }
                             CommandEvent::Stderr(line) => {
-                                let _ = writeln!(
-                                    file,
-                                    "[stderr] {}",
-                                    String::from_utf8_lossy(&line)
-                                );
+                                let _ =
+                                    writeln!(file, "[stderr] {}", String::from_utf8_lossy(&line));
                             }
                             CommandEvent::Terminated(status) => {
                                 let _ = writeln!(file, "[terminated] {status:?}");

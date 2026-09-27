@@ -64,11 +64,11 @@ Più dispositivi collegati: scrcpy ha bisogno del seriale — la nostra dashboar
 passa già (`scrcpy -s SERIAL`), quindi questo errore non dovrebbe comparire usando
 il pulsante **Avvia mirroring**. Da terminale manuale: `scrcpy -s <SERIAL>`.
 
-## Analisi / round: «la schermata non si ferma mai … stato idle non raggiunto»
+## Analizza schermata: «uiautomator ERROR: could not get idle state» / gerarchia UI non disponibile
 
 `uiautomator dump` legge la UI solo quando lo schermo è fermo. Su un **LIVE TikTok**
-(video + commenti sempre in movimento) lo stato idle non arriva mai: dopo ~12 s
-uiautomator rinuncia e il round va in **skip** (fail-closed, nessun tap).
+(video + commenti sempre in movimento) lo stato idle non arriva quasi mai: dopo
+~12 s uiautomator rinuncia e l'analisi mostra «gerarchia UI non disponibile».
 Verificato su Samsung SM-A057G / Android 15: quasi tutti i tentativi falliscono.
 Anche quando il dump riesce, il prezzo non è esposto. Per questo i round
 leggono la card con **screenshot + OCR** (vedi docs/ARCHITECTURE.md); il dump

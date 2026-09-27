@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildUiDumpCommand,
   decodeXmlEntities,
   dumpUiHierarchy,
-  extractUiDumpXml,
   findCandidateAuctionNodes,
   looksLikeAuctionNode,
   parseUiHierarchy,
@@ -170,61 +168,5 @@ describe("uiSignature", () => {
 describe("dumpUiHierarchy (contratto)", () => {
   it("è una funzione async esportata per il layer server", () => {
     expect(typeof dumpUiHierarchy).toBe("function");
-  });
-});
-
-describe("buildUiDumpCommand — niente XML riciclati da dump precedenti", () => {
-  it("usa un file univoco per invocazione e lo rimuove prima e dopo", () => {
-    const cmd = buildUiDumpCommand();
-    expect(cmd).toContain("$$");
-    expect(cmd).toMatch(/rm -f "\$f"; uiautomator dump "\$f" 2>&1;/);
-    expect(cmd.trim().endsWith('rm -f "$f"')).toBe(true);
-    expect(cmd).not.toContain("/sdcard/window.xml");
-  });
-});
-
-describe("extractUiDumpXml — fail-closed sull'output di uiautomator", () => {
-  it("restituisce l'XML di un dump riuscito", () => {
-    const out = `UI hierchary dumped to: /sdcard/adc_ui_123.xml\n${FIXTURE}`;
-    expect(extractUiDumpXml(out)).toBe(FIXTURE);
-  });
-
-  it("accetta XML senza intestazione <?xml", () => {
-    const bare = FIXTURE.slice(FIXTURE.indexOf("<hierarchy"));
-    expect(extractUiDumpXml(bare)).toBe(bare);
-  });
-
-  it("scenario reale Samsung su TikTok LIVE: ERROR idle + XML vecchio → errore, MAI l'XML", () => {
-    // uiautomator esce con codice 0 anche quando fallisce: il cat successivo
-    // stampava il window.xml di un dump precedente (altra schermata).
-    const out = `ERROR: could not get idle state.\n${FIXTURE}`;
-    expect(() => extractUiDumpXml(out)).toThrow(/idle/);
-  });
-
-  it("ERROR idle senza XML → errore che spiega la schermata in movimento", () => {
-    expect(() => extractUiDumpXml("ERROR: could not get idle state.\n")).toThrow(
-      /schermata non si ferma mai/,
-    );
-  });
-
-  it("altri ERROR prima dell'XML → errore", () => {
-    expect(() => extractUiDumpXml(`ERROR: null root node returned by UiTestAutomationBridge.\n${FIXTURE}`)).toThrow(
-      /uiautomator dump fallito/,
-    );
-  });
-
-  it("output vuoto o inatteso → errore", () => {
-    expect(() => extractUiDumpXml("")).toThrow(/risposta inattesa/);
-    expect(() => extractUiDumpXml("Killed")).toThrow(/risposta inattesa/);
-  });
-
-  it("XML troncato (senza </hierarchy>) → errore", () => {
-    const truncated = FIXTURE.slice(0, FIXTURE.indexOf("</hierarchy>"));
-    expect(() => extractUiDumpXml(truncated)).toThrow(/troncato/);
-  });
-
-  it("la parola ERROR DENTRO l'XML (testo di un nodo) non invalida il dump", () => {
-    const withErrorText = FIXTURE.replace('text="Home"', 'text="ERROR 404"');
-    expect(extractUiDumpXml(withErrorText)).toBe(withErrorText);
   });
 });
