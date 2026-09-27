@@ -81,6 +81,7 @@ Guida per tester passo-passo: [docs/TESTER-MACOS.md](docs/TESTER-MACOS.md)
 | `npm run app:fetch-tools` | scarica adb/scrcpy ufficiali + compila il sidecar server |
 | `npm run setup` | guida interattiva all'installazione (macOS) |
 | `npm run doctor` | diagnostica completa ambiente + telefono |
+| `npm run measure:latency` | latenze dump/parse/decide su device reale, senza tap (`-- --serial <seriale>` con più device) |
 | `npm run dev` | server + dashboard in modalità sviluppo |
 | `npm run build` | build di produzione della dashboard |
 | `npm start` | server che serve la dashboard buildata (<http://localhost:5175>) |
@@ -111,9 +112,10 @@ Dettagli e motivazioni: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - Server bindato solo su `127.0.0.1`: nessuna porta esposta su Internet.
 - Nessuna credenziale nel repository (vedi `.env.example` per le variabili opzionali).
 - Comandi adb eseguiti con `execFile` (no shell) + input sanitizzato.
-- Il progetto è una piattaforma **generica** di controllo e test Android: non implementa
-  né intende implementare automazioni di offerte/transazioni, bypass di controlli
-  anti-abuse, spoofing o mascheramento di attività.
+- Automazione offerte (`src/auction/`) **fail-closed**: default sicuri (dry-run attivo,
+  offerta massima 0 €, 0 offerte per asta), arresto di emergenza persistente; il tap
+  reale avviene solo con round LIVE **e** dry-run disattivato. Nessun bypass di
+  controlli anti-abuse, spoofing o mascheramento di attività.
 
 ## Roadmap
 

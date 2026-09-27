@@ -64,6 +64,16 @@ Più dispositivi collegati: scrcpy ha bisogno del seriale — la nostra dashboar
 passa già (`scrcpy -s SERIAL`), quindi questo errore non dovrebbe comparire usando
 il pulsante **Avvia mirroring**. Da terminale manuale: `scrcpy -s <SERIAL>`.
 
+## Analisi / round: «la schermata non si ferma mai … stato idle non raggiunto»
+
+`uiautomator dump` legge la UI solo quando lo schermo è fermo. Su un **LIVE TikTok**
+(video + commenti sempre in movimento) lo stato idle non arriva mai: dopo ~12 s
+uiautomator rinuncia e il round va in **skip** (fail-closed, nessun tap).
+Verificato su Samsung SM-A057G / Android 15: quasi tutti i tentativi falliscono.
+Anche quando il dump riesce, la card dell'asta arriva come contenitori
+(`ViewGroup`) **senza testo né content-desc**: «Offri N €» e il prezzo non sono
+leggibili via uiautomator. Serve un canale di lettura diverso.
+
 ## Homebrew: «command not found: brew» (Apple Silicon)
 
 Su Mac M1/M2/M3/M4 Homebrew sta in `/opt/homebrew`. Se installato ma non trovato:

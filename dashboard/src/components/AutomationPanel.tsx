@@ -87,7 +87,11 @@ export function AutomationPanel({ serial, onError }: Props) {
           </>
         ) : (
           <>
-            <span className="estop-label">Tap reali abilitati (limiti attivi)</span>
+            <span className="estop-label">
+              {config?.dryRun === false
+                ? "Tap reali abilitati (limiti attivi)"
+                : "Dry-run attivo — nessun tap reale"}
+            </span>
             <button
               className="btn danger"
               disabled={busy}
