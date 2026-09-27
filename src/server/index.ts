@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { DeviceManager } from "../devices/device-manager";
 import { adbSource } from "../adb/devices";
 import { scrcpyLauncher } from "../scrcpy/launcher";
+import { webviewCors } from "./cors";
 import { buildRouter } from "./routes";
 import { activityLog } from "./logging";
 import { WsHub } from "./ws";
@@ -26,6 +27,8 @@ const wsHub = new WsHub();
 const app = express();
 
 app.use(express.json({ limit: "1mb" }));
+// Prima del router: anche errori e 404 sotto /api devono arrivare alla webview
+app.use("/api", webviewCors);
 app.use("/api", buildRouter({ manager, wsHub }));
 
 // In modalità `npm start` serve la dashboard buildata; in dev serve Vite (5174)
