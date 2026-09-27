@@ -75,7 +75,11 @@ export function AuctionModal({
           {analysis.nodeCount} nodi · schermo ~{analysis.screenSize.width}×
           {analysis.screenSize.height} · {analysis.clickableNodes.length}{" "}
           clickabili · XML raw:{" "}
-          {analysis.xmlFile ? <code>{analysis.xmlFile}</code> : "non disponibile (dump fallito)"}
+          {analysis.xmlFile ? (
+            <code>{analysis.xmlFile}</code>
+          ) : (
+            "non disponibile (dump fallito)"
+          )}
         </p>
 
         <img
@@ -98,9 +102,9 @@ export function AuctionModal({
               </p>
               <p className="note">
                 uiautomator non riesce a leggere la UI (tipico su TikTok LIVE:
-                schermo in movimento). Nessun candidato derivato da XML
-                vecchi. Riprova su una schermata ferma o usa lo screenshot per
-                la diagnostica.
+                schermo in movimento). Nessun candidato derivato da XML vecchi.
+                Riprova su una schermata ferma o usa lo screenshot per la
+                diagnostica.
               </p>
               {analysis.dumpError && (
                 <p className="note">

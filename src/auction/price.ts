@@ -13,8 +13,7 @@ import type { UiNode } from "../shared/types";
  * Importi riconosciuti: numero con separatori adiacente al simbolo €
  * (prima o dopo) oppure alla parola "eur".
  */
-const AMOUNT_RE =
-  /€\s*(\d[\d.,]*\d|\d)|(\d[\d.,]*\d|\d)\s*(?:€|\beur\b)/i;
+const AMOUNT_RE = /€\s*(\d[\d.,]*\d|\d)|(\d[\d.,]*\d|\d)\s*(?:€|\beur\b)/i;
 
 export interface PriceCandidate {
   /** Valore numerico normalizzato in euro (Number). */

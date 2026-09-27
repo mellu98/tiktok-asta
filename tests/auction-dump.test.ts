@@ -26,7 +26,9 @@ describe("buildDumpCommand — path univoci per tentativo", () => {
     const { command, remotePath } = buildDumpCommand("n9");
     const parts = command.split("; ").map((p) => p.trim());
     expect(parts[0]).toBe(`rm -f '${remotePath}'`);
-    expect(parts[1]).toBe(`uiautomator dump '${remotePath}' && cat '${remotePath}'`);
+    expect(parts[1]).toBe(
+      `uiautomator dump '${remotePath}' && cat '${remotePath}'`,
+    );
     expect(parts[2]).toBe(`rm -f '${remotePath}'`);
   });
 

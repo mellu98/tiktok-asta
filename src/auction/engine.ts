@@ -44,7 +44,11 @@ function sleep(ms: number): Promise<void> {
 }
 
 /** Salva l'XML nella cartella canonica e ritorna il percorso. */
-export function saveXmlDump(serial: string, runId: string, xml: string): string {
+export function saveXmlDump(
+  serial: string,
+  runId: string,
+  xml: string,
+): string {
   const safeSerial = serial.replace(/[^A-Za-z0-9._-]/g, "_");
   const dir = uiDumpsDir();
   mkdirSync(dir, { recursive: true });

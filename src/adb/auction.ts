@@ -34,7 +34,9 @@ export async function dumpUiHierarchy(
       });
     } catch (err) {
       lastError =
-        err instanceof Error ? err : new Error("spawn adb fallito: " + String(err));
+        err instanceof Error
+          ? err
+          : new Error("spawn adb fallito: " + String(err));
       if (attempt < attempts - 1) await sleep(1500);
       continue;
     }
