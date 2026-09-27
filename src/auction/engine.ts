@@ -65,13 +65,28 @@ function uiSignature(nodes: UiNode[]): string {
   return `${nodes.length}|${texts.join("|").slice(0, 400)}`;
 }
 
-function skipResult(
-  base: RoundResult,
-  reason: string,
-  kind: "evaluate" | "dry",
-): RoundResult {
+/**
+ * Screenshot diagnostico dei round senza tap (fuori dai tempi misurati):
+ * affianca l'XML nel journal per ricostruire cosa c'era a schermo.
+ * Best-effort: se fallisce, la decisione resta valida.
+ */
+async function attachScreenshot(base: RoundResult): Promise<void> {
+  try {
+    const shot = await captureAndSave(base.serial);
+    base.screenshotFile = shot.file;
+  } catch {
+    // screenshot non critico per la decisione
+  }
+}
+
+function journalKind(mode: RoundResult["mode"]): "evaluate" | "dry" {
+  return mode === "evaluate" ? "evaluate" : "dry";
+}
+
+async function skipResult(base: RoundResult, reason: string): Promise<RoundResult> {
   base.reason = reason;
-  appendJournal(toJournal(base, kind, null, null, null));
+  await attachScreenshot(base);
+  appendJournal(toJournal(base, journalKind(base.mode), null, null, null));
   return base;
 }
 
@@ -155,7 +170,7 @@ export async function runRound(
       timings.dumpMs = Math.round(now() - t);
     } catch (err) {
       base.error = err instanceof Error ? err.message : String(err);
-      return skipResult(base, "dump UI non riuscito", "evaluate");
+      return skipResult(base, "dump UI non riuscito");
     }
     base.xmlFile = saveXmlDump(serial, xml);
 
@@ -213,7 +228,7 @@ export async function runRound(
 
     timings.decideMs = Math.round(now() - tDecide);
     if (!proceed) {
-      return skipResult(base, reason, mode === "evaluate" ? "evaluate" : "dry");
+      return skipResult(base, reason);
     }
 
     // Da qui in poi: condizioni OK. Il tap reale avviene SOLO in mode "live"
@@ -224,7 +239,8 @@ export async function runRound(
         mode !== "live"
           ? "condizioni soddisfatte (valutazione, nessun tap)"
           : "condizioni soddisfatte — dry-run attivo in configurazione, nessun tap";
-      appendJournal(toJournal(base, mode === "evaluate" ? "evaluate" : "dry", null, null, timings));
+      await attachScreenshot(base);
+      appendJournal(toJournal(base, journalKind(mode), null, null, timings));
       return base;
     }
 
@@ -232,7 +248,7 @@ export async function runRound(
     if (!offerNode) {
       // Difesa in profondità: irraggiungibile dopo le guardie sopra.
       timings.decideMs = timings.decideMs ?? 0;
-      return skipResult(base, "stato interno incoerente (pulsante assente)", "evaluate");
+      return skipResult(base, "stato interno incoerente (pulsante assente)");
     }
     const center = offerNode.center;
     let tapError: string | null = null;

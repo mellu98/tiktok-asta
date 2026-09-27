@@ -143,6 +143,24 @@ describe("parseAmountEur / estimateNextBid", () => {
     expect(parseAmountEur("nessun importo")).toBeNull();
   });
 
+  it("€ davanti con punto delle migliaia: «€1.234» è 1234, non 1,23", () => {
+    expect(parseAmountEur("€1.234")).toBe(1234);
+    expect(parseAmountEur("€ 1.234,56")).toBe(1234.56);
+    expect(parseAmountEur("€ 12,50")).toBe(12.5);
+    expect(parseAmountEur("€1,234.56")).toBe(1234.56);
+  });
+
+  it("importi senza separatore delle migliaia non vengono troncati", () => {
+    expect(parseAmountEur("1234 €")).toBe(1234);
+    expect(parseAmountEur("12345€")).toBe(12345);
+  });
+
+  it("stringhe reali della card asta TikTok (Samsung, 27/09)", () => {
+    expect(parseAmountEur("Offri 21 €")).toBe(21);
+    expect(parseAmountEur("19€")).toBe(19);
+    expect(parseAmountEur("2 € di spedizione")).toBe(2);
+  });
+
   it("stima il prezzo come importo massimo visibile", () => {
     const nodes = [
       SCREEN,

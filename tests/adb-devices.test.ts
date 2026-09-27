@@ -4,7 +4,9 @@ import {
   parseAdbDevices,
   parseGetprop,
   propsToInfo,
+  selectReadySerial,
 } from "../src/adb/devices";
+import type { ParsedAdbDevice } from "../src/shared/types";
 
 const SAMPLE_SAMSUNG = `* daemon not running; starting now at tcp:5037
 List of devices attached
@@ -135,5 +137,39 @@ describe("propsToInfo", () => {
     const info = propsToInfo({});
     expect(info.model).toBe("");
     expect(info.androidVersion).toBe("");
+  });
+});
+
+describe("selectReadySerial — su quale device misurare", () => {
+  const dev = (serial: string, state: ParsedAdbDevice["state"]): ParsedAdbDevice => ({
+    serial,
+    state,
+    model: null,
+    product: null,
+    transportId: null,
+  });
+
+  it("un solo device autorizzato → quello", () => {
+    expect(selectReadySerial([dev("R7AX711BSBV", "device")])).toBe("R7AX711BSBV");
+  });
+
+  it("seriale richiesto e pronto → quello, anche con più device", () => {
+    const list = [dev("AAA", "device"), dev("R7AX711BSBV", "device")];
+    expect(selectReadySerial(list, "R7AX711BSBV")).toBe("R7AX711BSBV");
+  });
+
+  it("seriale richiesto ma non autorizzato → errore esplicito", () => {
+    expect(() =>
+      selectReadySerial([dev("R7AX711BSBV", "unauthorized")], "R7AX711BSBV"),
+    ).toThrow(/non collegato o non autorizzato/);
+  });
+
+  it("più device pronti senza scelta → errore che chiede --serial", () => {
+    const list = [dev("AAA", "device"), dev("BBB", "device")];
+    expect(() => selectReadySerial(list)).toThrow(/--serial/);
+  });
+
+  it("nessun device pronto → errore", () => {
+    expect(() => selectReadySerial([dev("X", "offline")])).toThrow(/Nessun device/);
   });
 });

@@ -13,7 +13,7 @@ import type { UiNode } from "../shared/types";
  * Importi riconosciuti: "1.234 €", "1234 euro", "€ 500", "12,50 €", "999€",
  * anche senza simbolo se il nodo è adiacente a parole di asta (chiamante).
  */
-const AMOUNT_RE = /(?:\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?|\d+(?:[.,]\d{2}))\s*(?:€|eur\b)|€\s*\d(?:\d|,\d{3})*(?:[.,]\d{2})?/gi;
+const AMOUNT_RE = /(?:\d{1,3}(?:[.,]\d{3})+|\d+)(?:[.,]\d{2})?\s*(?:€|eur\b)|€\s*(?:\d{1,3}(?:[.,]\d{3})+|\d+)(?:[.,]\d{2})?/gi;
 
 export interface PriceCandidate {
   /** Valore numerico normalizzato in euro (Number). */

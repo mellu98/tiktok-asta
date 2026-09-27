@@ -5,17 +5,18 @@
  * device the script exits with a clear message — no estimates are printed.
  *
  * Uso:
- *   npm run measure:latency              → 5 round di valutazione (no tap)
- *   npm run measure:latency --rounds 10
- *   npm run measure:latency -- --tap     → misura anche il tap REALE
- *                                          (richiede conferma esplicita)
+ *   npm run measure:latency                       → 5 round di valutazione (no tap)
+ *   npm run measure:latency -- --rounds 10
+ *   npm run measure:latency -- --serial R7AX711BSBV  (obbligatorio con più device)
+ *   npm run measure:latency -- --tap              → misura anche il tap REALE
+ *                                                   (richiede conferma esplicita)
  *
  * Stampa min/avg/max per fase: dump, parse, decide, tap, verify.
  * NESSUN tap reale avviene senza il flag --tap.
  */
 
 import { runRound } from "../src/auction/engine";
-import { listDevices } from "../src/adb/devices";
+import { listDevices, selectReadySerial } from "../src/adb/devices";
 
 interface Stats {
   min: number;
@@ -44,16 +45,16 @@ async function main(): Promise<void> {
   const wantTap = args.includes("--tap");
   const roundsIdx = args.indexOf("--rounds");
   const rounds = roundsIdx !== -1 ? Number(args[roundsIdx + 1]) || 5 : 5;
+  const serialIdx = args.indexOf("--serial");
+  const requestedSerial = serialIdx !== -1 ? args[serialIdx + 1] : undefined;
 
-  const devices = await listDevices();
-  const ready = devices.filter((d) => d.state === "device");
-  if (ready.length === 0) {
-    console.error(
-      "Nessun device autorizzato collegato. Collega il Samsung, accetta il debug USB e rilancia.",
-    );
+  let serial: string;
+  try {
+    serial = selectReadySerial(await listDevices(), requestedSerial);
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
-  const serial = ready[0]?.serial as string;
   console.log(`Device: ${serial} · round: ${rounds} · tap reale: ${wantTap ? "SÌ" : "no"}`);
 
   if (wantTap) {

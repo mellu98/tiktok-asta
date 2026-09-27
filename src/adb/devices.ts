@@ -66,6 +66,37 @@ export async function listDevices(): Promise<ParsedAdbDevice[]> {
   return parseAdbDevices(output);
 }
 
+/**
+ * Seriale su cui operare: quello richiesto (se collegato e autorizzato)
+ * oppure l'unico device pronto. Più device senza scelta esplicita → errore,
+ * mai una scelta implicita del "primo della lista".
+ */
+export function selectReadySerial(
+  devices: ParsedAdbDevice[],
+  requested?: string,
+): string {
+  const ready = devices.filter((d) => d.state === "device").map((d) => d.serial);
+  if (requested) {
+    if (!ready.includes(requested)) {
+      throw new Error(
+        `Device ${requested} non collegato o non autorizzato. Pronti: ${ready.join(", ") || "nessuno"}`,
+      );
+    }
+    return requested;
+  }
+  if (ready.length === 0) {
+    throw new Error(
+      "Nessun device autorizzato collegato. Collega il Samsung, accetta il debug USB e rilancia.",
+    );
+  }
+  if (ready.length > 1) {
+    throw new Error(
+      `Più device collegati (${ready.join(", ")}): indica quale con --serial <seriale>`,
+    );
+  }
+  return ready[0] as string;
+}
+
 export type DeviceProps = Record<string, string>;
 
 /** Parsing dell'output completo di `adb shell getprop`: `[chiave]: [valore]`. */

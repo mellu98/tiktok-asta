@@ -19,6 +19,7 @@
     "test": "vitest run",
     "setup": "bash scripts/setup-macos.sh",
     "doctor": "bash scripts/doctor.sh",
+    "measure:latency": "tsx scripts/measure-latency.ts",
     "uninstall": "bash scripts/uninstall.sh",
     "app:fetch-tools": "bash scripts/fetch-tools.sh",
     "app:build": "npm run build && bash scripts/fetch-tools.sh && tauri build",
