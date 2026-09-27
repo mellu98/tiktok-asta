@@ -20,3 +20,4 @@ src-tauri/resources/tools/*
 
 ui-dumps/*
 !ui-dumps/.gitkeep
+*.bun-build
