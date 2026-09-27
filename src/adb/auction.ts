@@ -14,38 +14,71 @@ import { execAdbText } from "./client";
  * nessuna shell) → nessuna superficie di injection.
  */
 
-const DUMP_PATH = "/sdcard/window.xml";
 const DUMP_TIMEOUT_MS = 20000; // uiautomator può metterci parecchi secondi
+const DUMP_RETRY_DELAY_MS = 1500;
 const TAP_SETTLE_MS = 2000;
+
+/** uiautomator ha già atteso ~10 s la UI ferma: riprovare non serve. */
+const IDLE_ERROR_RE = /could not get idle state/i;
+
+/**
+ * Comando lato device per UN dump: file univoco per invocazione ($$ = PID
+ * della shell del device), rimosso prima e dopo. Un dump fallito non può più
+ * restituire l'XML lasciato da un dump precedente (altra schermata).
+ * uiautomator scrive gli errori su stderr, che adb (shell protocol v2) tiene
+ * separato: 2>&1 li porta nello stdout che il client legge.
+ */
+export function buildUiDumpCommand(): string {
+  return 'f=/sdcard/adc_ui_$$.xml; rm -f "$f"; uiautomator dump "$f" 2>&1; cat "$f" 2>/dev/null; rm -f "$f"';
+}
+
+/**
+ * Estrae l'XML dall'output combinato dump + cat. FAIL-CLOSED: uiautomator
+ * esce con codice 0 anche quando fallisce, quindi qualunque ERROR prima
+ * dell'XML, XML assente o troncato → eccezione, mai un XML "di ripiego".
+ */
+export function extractUiDumpXml(output: string): string {
+  const header = output.indexOf("<?xml");
+  const xmlStart = header !== -1 ? header : output.indexOf("<hierarchy");
+  const preamble = xmlStart === -1 ? output : output.slice(0, xmlStart);
+  const detail = preamble.trim().slice(0, 200);
+
+  if (/ERROR/i.test(preamble)) {
+    if (IDLE_ERROR_RE.test(preamble)) {
+      throw new Error(
+        `uiautomator non riesce a leggere la UI: la schermata non si ferma mai (es. video LIVE), stato idle non raggiunto. Dettaglio: ${detail}`,
+      );
+    }
+    throw new Error(`uiautomator dump fallito: ${detail}`);
+  }
+  if (xmlStart === -1) {
+    throw new Error(`uiautomator dump: risposta inattesa: ${detail}`);
+  }
+  const xml = output.slice(xmlStart);
+  if (!/<\/hierarchy>\s*$/.test(xml)) {
+    throw new Error("uiautomator dump: XML incompleto o troncato");
+  }
+  return xml;
+}
 
 /**
  * Esegue `uiautomator dump` e legge l'XML in UN SOLO spawn adb
  * (dump + cat combinati nella stessa shell del device → meno round-trip).
- * Un solo retry se la UI non è idle.
+ * Un solo retry per risposte inattese; nessun retry se la UI non è mai idle.
  */
 export async function dumpUiHierarchy(serial: string): Promise<string> {
-  const combined = `uiautomator dump ${DUMP_PATH} && cat ${DUMP_PATH}`;
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
-    const out = await execAdbText(["-s", serial, "shell", combined], {
+    if (attempt > 0) await sleep(DUMP_RETRY_DELAY_MS);
+    const out = await execAdbText(["-s", serial, "shell", buildUiDumpCommand()], {
       timeoutMs: DUMP_TIMEOUT_MS,
     });
-    const markerIdx = out.indexOf("<node");
-    if (markerIdx !== -1) {
-      const xmlStart = out.lastIndexOf("<?xml", markerIdx);
-      return xmlStart === -1 ? out.slice(out.lastIndexOf("\n", markerIdx) + 1) : out.slice(xmlStart);
+    try {
+      return extractUiDumpXml(out);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (IDLE_ERROR_RE.test(out)) break;
     }
-    if (/ERROR/i.test(out)) {
-      // Tipico: "ERROR: could not get idle state." (UI in transizione)
-      lastError = new Error(
-        `uiautomator non riesce a leggere la UI (schermata in movimento o non idle). Dettaglio: ${out.trim().slice(0, 200)}`,
-      );
-    } else {
-      lastError = new Error(
-        `uiautomator dump: risposta inattesa: ${out.trim().slice(0, 200)}`,
-      );
-    }
-    await sleep(1500);
   }
   throw lastError ?? new Error("uiautomator dump non riuscito");
 }
