@@ -9,7 +9,26 @@ log operativo — tutto in una dashboard locale dark.
 
 ---
 
-# Test rapido Samsung su Mac
+# App macOS installabile (.dmg) — per i tester
+
+**Non serve Terminale, npm, Homebrew né installare adb/scrcpy**: tutto è incluso.
+
+1. Vai su [GitHub Releases](https://github.com/mellu98/tiktok-asta/releases) e
+   scarica il .dmg giusto per il tuo Mac:
+   - `aarch64` → Apple Silicon (M1/M2/M3/M4)
+   - `x86_64` → Intel
+2. Apri il .dmg e trascina **Android Device Control** in Applicazioni.
+3. Al primo avvio: **clic destro sull'app → Apri → Apri**
+   (l'app è firmata ad-hoc, non notarizzata — avviso normale di macOS).
+4. Collega il Samsung via USB: l'app mostra una **guida integrata passo-passo**
+   per attivare Opzioni sviluppatore, Debug USB e autorizzare il computer.
+
+Screenshot e log dell'app finiscono in `~/Library/Application Support/com.mellu98.android-device-control/`
+e `~/Library/Logs/com.mellu98.android-device-control/`.
+
+---
+
+# Test rapido Samsung su Mac (sviluppatore, da terminale)
 
 ```bash
 git clone https://github.com/mellu98/tiktok-asta.git
@@ -55,6 +74,8 @@ Guida per tester passo-passo: [docs/TESTER-MACOS.md](docs/TESTER-MACOS.md)
 
 | Comando | Effetto |
 | --- | --- |
+| `npm run app:build` | build completa dell'app macOS (.app + .dmg) |
+| `npm run app:fetch-tools` | scarica adb/scrcpy ufficiali + compila il sidecar server |
 | `npm run setup` | guida interattiva all'installazione (macOS) |
 | `npm run doctor` | diagnostica completa ambiente + telefono |
 | `npm run dev` | server + dashboard in modalità sviluppo |

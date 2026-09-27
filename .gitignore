@@ -9,3 +9,11 @@ screenshots/*
 *.log
 .DS_Store
 coverage/
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+src-tauri/binaries/*
+!src-tauri/binaries/.gitkeep
+src-tauri/resources/tools/*
+!src-tauri/resources/tools/.gitkeep

@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "Finestra principale: nessuna API Tauri esposta alla UI (il backend parla solo HTTP/WS su 127.0.0.1).",
+  "windows": ["main"],
+  "permissions": []
+}

@@ -1,7 +1,15 @@
 # Guida tester — Mac + Samsung via USB
 
 Questa guida è per chi deve **provare il POC** su un Mac con un Samsung Android fisico.
-Non serve essere sviluppatori: copia-incolla i comandi nel Terminale.
+
+> **Via consigliata — senza Terminale**: scarica l'app da
+> [GitHub Releases](https://github.com/mellu98/tiktok-asta/releases), trascinala
+> in Applicazioni, aprila con **clic destro → Apri** e segui la guida integrata
+> nell'app (ti accompagna passo-passo su Debug USB e autorizzazione).
+> adb e scrcpy sono già dentro l'app: niente Homebrew, Node o comandi.
+> Poi salta direttamente alla sezione **«Prova le funzioni»**.
+
+Le sezioni seguenti descrivono la via da **Terminale** (per sviluppatori o debug).
 
 ## 0. Cosa ti serve
 
@@ -97,7 +105,20 @@ Chiudi la finestra scrcpy, poi premi `Ctrl + C` nel Terminale per fermare la das
 
 Per rimuovere tutto: `npm run uninstall` (ti chiede cosa rimuovere).
 
-## Checklist veloce
+## Checklist veloce (via app .dmg — tester)
+
+- [ ] .dmg scaricato da Releases (aarch64 = M1/M2/M3/M4, x86_64 = Intel)
+- [ ] App trascinata in Applicazioni
+- [ ] Primo avvio: clic destro → Apri → Apri
+- [ ] Guida integrata completata (Opzioni sviluppatore + Debug USB)
+- [ ] Telefono collegato + «Consenti sempre da questo computer»
+- [ ] Card del telefono verde ONLINE
+- [ ] Avvia mirroring → finestra scrcpy funzionante
+- [ ] Screenshot salvato
+- [ ] Elenco app + apertura app OK
+- [ ] HOME/BACK/tap/swipe/testo OK
+
+## Checklist veloce (via Terminale — sviluppatore)
 
 - [ ] `git clone` + `npm install` OK
 - [ ] `npm run setup` → tutti [✓]

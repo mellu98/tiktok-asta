@@ -1,0 +1,17 @@
+[package]
+name = "android-device-control"
+version = "0.2.0"
+description = "POC controllo dispositivi Android da macOS — ADB + scrcpy + dashboard"
+edition = "2021"
+license = "MIT"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+
+[profile.release]
+strip = true
+lto = true

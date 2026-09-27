@@ -1,8 +1,9 @@
 import { spawn, type ChildProcess } from "node:child_process";
 
 /**
- * Launcher di scrcpy: avvia il binario ufficiale (dipendenza Homebrew, MAI
- * bundled nel repo) in finestra nativa SDL, uno per dispositivo.
+ * Launcher di scrcpy: avvia il binario ufficiale in finestra nativa SDL, uno
+ * per dispositivo. In dev il binario arriva dal PATH (Homebrew); nell'app
+ * Tauri da POC_SCRCPY_BIN (tool bundled nell'app).
  */
 
 export interface ScrcpyHooks {
@@ -11,16 +12,27 @@ export interface ScrcpyHooks {
   onError(serial: string, message: string): void;
 }
 
+const SCRCPY_BIN = process.env.POC_SCRCPY_BIN || "scrcpy";
+const ADB_PATH = process.env.POC_ADB_BIN;
+
 /** Costruisce gli argomenti di scrcpy — isolata per essere testabile. */
-export function buildScrcpyArgs(serial: string, windowTitle: string): string[] {
-  return ["-s", serial, "--window-title", windowTitle];
+export function buildScrcpyArgs(
+  serial: string,
+  windowTitle: string,
+  adbPath?: string,
+): string[] {
+  const args = ["-s", serial, "--window-title", windowTitle];
+  if (adbPath) {
+    args.push("--adb", adbPath);
+  }
+  return args;
 }
 
 class ScrcpyLauncher {
   private readonly procs = new Map<string, Set<ChildProcess>>();
 
   start(serial: string, windowTitle: string, hooks: ScrcpyHooks): number {
-    const child = spawn("scrcpy", buildScrcpyArgs(serial, windowTitle), {
+    const child = spawn(SCRCPY_BIN, buildScrcpyArgs(serial, windowTitle, ADB_PATH), {
       stdio: "ignore",
       env: process.env,
     });
@@ -33,7 +45,7 @@ class ScrcpyLauncher {
       this.remove(serial, child);
       const message =
         (err as NodeJS.ErrnoException).code === "ENOENT"
-          ? "scrcpy non trovato — esegui: brew install scrcpy (oppure npm run setup)"
+          ? "scrcpy non trovato — in dev: brew install scrcpy (npm run setup)"
           : `Errore scrcpy: ${err.message}`;
       hooks.onError(serial, message);
     });

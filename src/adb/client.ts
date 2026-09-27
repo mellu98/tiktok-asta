@@ -10,6 +10,12 @@ const DEFAULT_TIMEOUT_MS = 8000;
 const BINARY_TIMEOUT_MS = 20000;
 const MAX_BUFFER = 64 * 1024 * 1024; // screenshot PNG possono superare il default di 1 MB
 
+/**
+ * Percorso del binario adb. Default: dal PATH (dev mode con Homebrew).
+ * Nell'app Tauri il backend riceve POC_ADB_BIN che punta ai tool bundled.
+ */
+export const ADB_BIN = process.env.POC_ADB_BIN || "adb";
+
 export class AdbError extends Error {
   constructor(
     message: string,
@@ -31,7 +37,7 @@ export function execAdbText(
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(
-      "adb",
+      ADB_BIN,
       args,
       {
         timeout: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
@@ -56,7 +62,7 @@ export function execAdbBinary(
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     execFile(
-      "adb",
+      ADB_BIN,
       args,
       {
         timeout: opts.timeoutMs ?? BINARY_TIMEOUT_MS,
@@ -77,7 +83,7 @@ export function execAdbBinary(
 function adbErrorFrom(err: ExecFileException, stderr: string): AdbError {
   if (err.code === "ENOENT") {
     return new AdbError(
-      "adb non trovato nel PATH — esegui: brew install android-platform-tools (oppure npm run setup)",
+      "adb non trovato — in dev: brew install android-platform-tools (npm run setup)",
       stderr,
     );
   }

@@ -4,12 +4,13 @@ import type {
   LogEntry,
   WsServerMessage,
 } from "../../src/shared/types";
-import { Api } from "./api";
+import { Api, SERVER_WS } from "./api";
 import { DeviceCard } from "./components/DeviceCard";
 import { QuickControls } from "./components/QuickControls";
 import { LogPanel } from "./components/LogPanel";
 import { ScreenshotModal } from "./components/ScreenshotModal";
 import { AppsModal } from "./components/AppsModal";
+import { OnboardingPanel } from "./components/OnboardingPanel";
 
 export function App() {
   const [devices, setDevices] = useState<AndroidDevice[]>([]);
@@ -28,6 +29,7 @@ export function App() {
     {},
   );
   const [error, setError] = useState<string | null>(null);
+  const [serverReady, setServerReady] = useState(false);
   const errorTimer = useRef<number | undefined>(undefined);
 
   const showError = useCallback((message: string) => {
@@ -48,10 +50,13 @@ export function App() {
     [showError],
   );
 
-  // Connessione WS + stato iniziale (con riconnessione automatica)
+  // Connessione WS + stato iniziale.
+  // Nell'app Tauri il sidecar impiega ~1-2s ad avviarsi: la prima fetch REST
+  // può fallire → retry periodico finché il server non risponde.
   useEffect(() => {
     let disposed = false;
     let ws: WebSocket | null = null;
+    let retryTimer: number | undefined;
 
     const handleMessage = (raw: MessageEvent) => {
       let msg: WsServerMessage;
@@ -72,8 +77,7 @@ export function App() {
 
     const connect = () => {
       if (disposed) return;
-      const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-      ws = new WebSocket(`${proto}//${window.location.host}/ws`);
+      ws = new WebSocket(SERVER_WS);
       ws.onmessage = handleMessage;
       ws.onclose = () => {
         if (!disposed) window.setTimeout(connect, 3000);
@@ -81,18 +85,29 @@ export function App() {
     };
     connect();
 
-    Api.devices()
-      .then(setDevices)
-      .catch((e: Error) => showError(e.message));
-    Api.logs()
-      .then(setLogs)
-      .catch(() => {});
+    const initialLoad = async () => {
+      if (disposed) return;
+      try {
+        const [devs, logEntries] = await Promise.all([
+          Api.devices(),
+          Api.logs(),
+        ]);
+        setDevices(devs);
+        setLogs(logEntries);
+        setServerReady(true);
+      } catch {
+        // Sidecar non ancora pronto: riprova tra 2s (max ~30 tentativi)
+        retryTimer = window.setTimeout(() => void initialLoad(), 2000);
+      }
+    };
+    void initialLoad();
 
     return () => {
       disposed = true;
+      window.clearTimeout(retryTimer);
       ws?.close();
     };
-  }, [showError]);
+  }, []);
 
   // Auto-selezione del dispositivo (prima connessione o device scomparso)
   useEffect(() => {
@@ -145,6 +160,12 @@ export function App() {
         <span className="subtitle">POC locale · ADB + scrcpy · macOS</span>
       </header>
 
+      {!serverReady && (
+        <div className="banner info" role="status">
+          Avvio del server interno…
+        </div>
+      )}
+
       {error && (
         <div className="banner" role="alert">
           ⚠ {error}
@@ -153,16 +174,7 @@ export function App() {
 
       <section className="devices">
         {devices.length === 0 ? (
-          <div className="empty">
-            <p>
-              <strong>Nessun dispositivo collegato.</strong>
-            </p>
-            <p>
-              Collega il Samsung via USB (debug USB attivo), sblocca lo schermo
-              e attendi qualche secondo. In caso di problemi esegui{" "}
-              <code>npm run doctor</code>.
-            </p>
-          </div>
+          <OnboardingPanel serverReady={serverReady} />
         ) : (
           devices.map((d) => (
             <DeviceCard

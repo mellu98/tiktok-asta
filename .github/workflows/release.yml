@@ -1,0 +1,77 @@
+name: Release (dmg)
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14 # Apple Silicon
+            target: aarch64-apple-darwin
+          - os: macos-15-intel # Intel
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      # actions/checkout v4.2.2 (SHA-pinned, senza persistenza credenziali)
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      # dtolnay/rust-toolchain (branch stable, SHA-pinned)
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      # Niente rust-cache: i workflow che pubblicano release non devono usare
+      # cache condivise (zizmor:cache-poisoning). Build pulita = release
+      # riproducibile e verificabile.
+
+      # actions/setup-node v4.1.0 (SHA-pinned) — niente cache in release
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+        with:
+          node-version: 22
+
+      # oven-sh/setup-bun v2 (SHA-pinned)
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+
+      - name: Install dipendenze
+        run: npm ci
+
+      - name: Build dashboard
+        run: npm run build
+
+      - name: Scarica tool ufficiali (adb + scrcpy) e compila sidecar
+        run: bash scripts/fetch-tools.sh
+
+      - name: Build app + pubblica Release
+        uses: tauri-apps/tauri-action@fce9c6108b31ea247710505d3aaaa893ee6768d4
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: "Android Device Control v__VERSION__"
+          releaseBody: |
+            ## Installazione (macOS)
+
+            1. Scarica il .dmg corretto per il tuo Mac:
+               - **aarch64 / Apple Silicon** → Mac M1, M2, M3, M4
+               - **x86_64 / Intel** → Mac precedenti
+            2. Apri il .dmg e trascina l'app in **Applicazioni**.
+            3. Al primo avvio: clic destro sull'app → **Apri** → **Apri**
+               (l'app non è notarizzata; è firmata ad-hoc).
+            4. Collega il Samsung via USB e segui la guida integrata
+               per attivare il Debug USB.
+
+            L'app include adb e scrcpy: **non servono** Homebrew,
+            Node o Terminale.
+          releaseDraft: false
+          prerelease: false
+          args: --target ${{ matrix.target }}

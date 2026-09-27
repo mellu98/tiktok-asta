@@ -4,17 +4,37 @@ import type {
   ScreenshotResult,
 } from "../../src/shared/types";
 
-/** Client REST verso il server locale. Tutti gli errori diventano Error con messaggio italiano. */
+/**
+ * Client REST verso il server locale. Tutti gli errori diventano Error con messaggio italiano.
+ *
+ * Base URL:
+ * - dev (`npm run dev`) e `npm start`: stesso origine → path relativi (Vite proxy / server statico)
+ * - app Tauri (webview su tauri://): il server sidecar è su 127.0.0.1:5175 → URL assoluti
+ */
+const SAME_ORIGIN =
+  typeof window !== "undefined" && window.location.protocol.startsWith("http");
+
+const DEV_WS_PROTO =
+  typeof window !== "undefined" && window.location.protocol === "https:"
+    ? "wss:"
+    : "ws:";
+
+export const SERVER_HTTP = SAME_ORIGIN ? "" : "http://127.0.0.1:5175";
+export const SERVER_WS = SAME_ORIGIN
+  ? `${DEV_WS_PROTO}//${window.location.host}/ws`
+  : "ws://127.0.0.1:5175/ws";
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(path, {
+    res = await fetch(`${SERVER_HTTP}${path}`, {
       headers: { "Content-Type": "application/json" },
       ...init,
     });
   } catch {
-    throw new Error("Server non raggiungibile — è attivo `npm run dev`?");
+    throw new Error(
+      "Server interno non raggiungibile — riavvia l'app (in dev: npm run dev)",
+    );
   }
   if (!res.ok) {
     let message = `Errore HTTP ${res.status}`;
