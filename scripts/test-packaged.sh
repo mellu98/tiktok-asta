@@ -33,21 +33,30 @@ echo "═══ 4. Firma bundle ═══"
 codesign --verify --deep --strict "$APP"
 echo "✓ codesign OK"
 
-echo "═══ 5. Avvio app + health ═══"
+echo "═══ 5. Avvio app + health (porta dinamica + token) ═══"
 cp -R "$APP" /tmp/ADC-packaged-test.app
+
+# Il server interno comunica porta+token sul stdout (marker nel log app)
+LOG="$HOME/Library/Logs/com.mellu98.android-device-control/poc-server.log"
+: > "$LOG" 2>/dev/null || true
 open /tmp/ADC-packaged-test.app
 
 HEALTH_OK=0
 for _ in $(seq 1 30); do
-  if curl -fsS "http://127.0.0.1:5175/api/health" >/dev/null 2>&1; then
-    HEALTH_OK=1
-    break
+  SESSION=$(grep -o '#\[tauri-session\] .*' "$LOG" 2>/dev/null | tail -1 | sed 's/#\[tauri-session\] //' || true)
+  if [ -n "$SESSION" ]; then
+    PORT=$(echo "$SESSION" | python3 -c "import json,sys; print(json.load(sys.stdin)['port'])" 2>/dev/null || true)
+    TOKEN=$(echo "$SESSION" | python3 -c "import json,sys; print(json.load(sys.stdin).get('token',''))" 2>/dev/null || true)
+    if [ -n "$PORT" ] && curl -fsS -H "x-session-token: $TOKEN" "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1; then
+      HEALTH_OK=1
+      break
+    fi
   fi
   sleep 1
 done
 
 if [ "$HEALTH_OK" = "1" ]; then
-  echo "✓ server interno risponde"
+  echo "✓ server interno risponde su porta dinamica $PORT (con token)"
 else
   echo "✗ server interno NON risponde" >&2
   osascript -e 'quit app "Android Device Control"' 2>/dev/null || true
@@ -55,32 +64,34 @@ else
   exit 1
 fi
 
+AUTH=(-H "Content-Type: application/json" -H "x-session-token: $TOKEN")
+
 echo "═══ 6. Endpoint automazione (device FAKE → errore gestito) ═══"
-TOKEN=$(grep -o '#\[tauri-session\] .*' "$HOME/Library/Logs/com.mellu98.android-device-control/poc-server.log" 2>/dev/null | tail -1 | sed 's/#[tauri-session] //' | python3 -c "import json,sys; print(json.load(sys.stdin).get('token',''))" 2>/dev/null || true)
-if curl -fsS -X POST "http://127.0.0.1:5175/api/devices/FAKE/auction/round" \
-  -H "Content-Type: application/json" -H "x-session-token: $TOKEN" \
-  -d '{"mode":"evaluate"}' >/dev/null 2>&1; then
-  echo "✓ endpoint round risponde"
-else
-  # l'errore adb è ATTESO (device FAKE): verifica solo che risponda JSON
-  RESP=$(curl -s -X POST "http://127.0.0.1:5175/api/devices/FAKE/auction/round" \
-    -H "Content-Type: application/json" -H "x-session-token: $TOKEN" \
-    -d '{"mode":"evaluate"}' || true)
-  case "$RESP" in
-    *error*) echo "✓ endpoint round presente (errore atteso su device FAKE)" ;;
-    *) echo "✗ endpoint round non risponde" >&2 ;;
-  esac
+RESP=$(curl -s -X POST "http://127.0.0.1:$PORT/api/devices/FAKE/auction/round" \
+  "${AUTH[@]}" -d '{"mode":"evaluate"}' || true)
+case "$RESP" in
+  *error*) echo "✓ endpoint round presente (errore atteso su device FAKE): $RESP" ;;
+  *) echo "✗ endpoint round non risponde: $RESP" >&2 ;;
+esac
+
+echo "═══ 6b. Guardie: estop attivo → round bloccato ═══"
+curl -s -X POST "http://127.0.0.1:$PORT/api/auction/estop" "${AUTH[@]}" -d '{"engaged":true}' >/dev/null
+RESP=$(curl -s -X POST "http://127.0.0.1:$PORT/api/devices/FAKE/auction/round" \
+  "${AUTH[@]}" -d '{"mode":"live"}' || true)
+curl -s -X POST "http://127.0.0.1:$PORT/api/auction/estop" "${AUTH[@]}" -d '{"engaged":false}' >/dev/null
+if [ -z "$RESP" ]; then
+  echo "✗ round non risponde" >&2
 fi
 
 echo "═══ 7. Chiusura pulita ═══"
 osascript -e 'quit app "Android Device Control"' 2>/dev/null || true
 sleep 2
 
-if lsof -ti :5175 >/dev/null 2>&1; then
-  echo "✗ porta 5175 ancora occupata dopo la chiusura" >&2
+if lsof -ti :$PORT >/dev/null 2>&1; then
+  echo "✗ porta $PORT ancora occupata dopo la chiusura" >&2
   exit 1
 fi
-echo "✓ chiusura pulita (porta liberata)"
+echo "✓ chiusura pulita (porta $PORT liberata)"
 
 rm -rf /tmp/ADC-packaged-test.app
 echo ""
