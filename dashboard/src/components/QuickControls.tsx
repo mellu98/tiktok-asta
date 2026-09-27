@@ -43,6 +43,7 @@ export function QuickControls({
   } | null>(null);
   const cancelTapsRef = useRef(false);
   const wakeWaitRef = useRef<(() => void) | null>(null);
+  const tapLockRef = useRef(false);
 
   const serial = device.serial;
   const tapsRunning = tapProgress !== null;
@@ -67,44 +68,56 @@ export function QuickControls({
       wakeWaitRef.current = finish;
     });
 
+  const executeTaps = async () => {
+    const parsed = parseTapSequence(tapCount, tapIntervalMs);
+    if (!parsed.ok) {
+      onError(parsed.error);
+      return;
+    }
+    const { plan } = parsed;
+    const tapX = Number(x);
+    const tapY = Number(y);
+    const { Api } = await import("../api");
+    const tapOnce = async () => {
+      await Api.tap(serial, tapX, tapY);
+    };
+
+    if (plan.count === 1) {
+      await tapOnce();
+      return;
+    }
+    if (
+      !window.confirm(
+        `Eseguire ${plan.count} tap in (${tapX}, ${tapY}), uno ogni ${plan.intervalMs} ms?`,
+      )
+    ) {
+      return;
+    }
+
+    cancelTapsRef.current = false;
+    setTapProgress({ done: 0, total: plan.count });
+    try {
+      await runTapSequence(plan, {
+        tap: tapOnce,
+        wait: waitOrStop,
+        isCancelled: () => cancelTapsRef.current,
+        onProgress: (done, total) => setTapProgress({ done, total }),
+      });
+    } finally {
+      setTapProgress(null);
+    }
+  };
+
+  // Blocco sincrono (ref, non state: lo state arriva al pulsante solo al render
+  // successivo): un doppio clic su Invia non deve avviare due tap o due sequenze
   const sendTap = () =>
     run(async () => {
-      const parsed = parseTapSequence(tapCount, tapIntervalMs);
-      if (!parsed.ok) {
-        onError(parsed.error);
-        return;
-      }
-      const { plan } = parsed;
-      const tapX = Number(x);
-      const tapY = Number(y);
-      const { Api } = await import("../api");
-      const tapOnce = async () => {
-        await Api.tap(serial, tapX, tapY);
-      };
-
-      if (plan.count === 1) {
-        await tapOnce();
-        return;
-      }
-      if (
-        !window.confirm(
-          `Eseguire ${plan.count} tap in (${tapX}, ${tapY}), uno ogni ${plan.intervalMs} ms?`,
-        )
-      ) {
-        return;
-      }
-
-      cancelTapsRef.current = false;
-      setTapProgress({ done: 0, total: plan.count });
+      if (tapLockRef.current) return;
+      tapLockRef.current = true;
       try {
-        await runTapSequence(plan, {
-          tap: tapOnce,
-          wait: waitOrStop,
-          isCancelled: () => cancelTapsRef.current,
-          onProgress: (done, total) => setTapProgress({ done, total }),
-        });
+        await executeTaps();
       } finally {
-        setTapProgress(null);
+        tapLockRef.current = false;
       }
     });
 
