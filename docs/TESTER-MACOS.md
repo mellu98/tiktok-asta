@@ -4,8 +4,10 @@ Questa guida è per chi deve **provare il POC** su un Mac con un Samsung Android
 
 > **Via consigliata — senza Terminale**: scarica l'app da
 > [GitHub Releases](https://github.com/mellu98/tiktok-asta/releases), trascinala
-> in Applicazioni, aprila con **clic destro → Apri** e segui la guida integrata
-> nell'app (ti accompagna passo-passo su Debug USB e autorizzazione).
+> in Applicazioni. Al primo avvio macOS blocca l'app (non è notarizzata):
+> apri **Impostazioni di Sistema → Privacy e sicurezza**, scorri in basso e
+> premi **«Apri comunque»**. Poi segui la guida integrata nell'app (ti
+> accompagna passo-passo su Debug USB e autorizzazione).
 > adb e scrcpy sono già dentro l'app: niente Homebrew, Node o comandi.
 > Poi salta direttamente alla sezione **«Prova le funzioni»**.
 
@@ -109,7 +111,7 @@ Per rimuovere tutto: `npm run uninstall` (ti chiede cosa rimuovere).
 
 - [ ] .dmg scaricato da Releases (aarch64 = M1/M2/M3/M4, x86_64 = Intel)
 - [ ] App trascinata in Applicazioni
-- [ ] Primo avvio: clic destro → Apri → Apri
+- [ ] Primo avvio: Impostazioni di Sistema → Privacy e sicurezza → «Apri comunque»
 - [ ] Guida integrata completata (Opzioni sviluppatore + Debug USB)
 - [ ] Telefono collegato + «Consenti sempre da questo computer»
 - [ ] Card del telefono verde ONLINE

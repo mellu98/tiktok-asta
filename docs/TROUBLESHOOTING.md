@@ -100,3 +100,16 @@ npm install
 npm run setup
 npm run doctor
 ```
+
+## «Android Device Control è danneggiato e non può essere aperto»
+
+Accade con il DMG **0.2.0** (bundle non sigillato) su macOS 13+: scarica il
+DMG **0.2.1 o successivo** dalle Releases, dove il bundle è firmato ad-hoc.
+
+Con le versioni 0.2.1+ al primo avvio il blocco è normale (app non
+notarizzata): passare da **Impostazioni di Sistema → Privacy e sicurezza →
+«Apri comunque»**. Soluzione alternativa da Terminale (se preferita):
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Android Device Control.app"
+```

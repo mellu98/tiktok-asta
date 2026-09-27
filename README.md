@@ -18,8 +18,11 @@ log operativo — tutto in una dashboard locale dark.
    - `aarch64` → Apple Silicon (M1/M2/M3/M4)
    - `x86_64` → Intel
 2. Apri il .dmg e trascina **Android Device Control** in Applicazioni.
-3. Al primo avvio: **clic destro sull'app → Apri → Apri**
-   (l'app è firmata ad-hoc, non notarizzata — avviso normale di macOS).
+3. **Primo avvio (macOS 15+)**: se al doppio clic l'app viene bloccata, apri
+   **Impostazioni di Sistema → Privacy e sicurezza**, scorri in basso e premi
+   **«Apri comunque»** accanto al messaggio su Android Device Control
+   (l'app è firmata ad-hoc, non notarizzata — avviso normale per app non sul
+   Mac App Store). Serve una sola volta.
 4. Collega il Samsung via USB: l'app mostra una **guida integrata passo-passo**
    per attivare Opzioni sviluppatore, Debug USB e autorizzare il computer.
 
