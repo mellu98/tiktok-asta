@@ -21,3 +21,6 @@ src-tauri/resources/tools/*
 ui-dumps/*
 !ui-dumps/.gitkeep
 *.bun-build
+
+# Lettore UI senza idle (jar dex compilato)
+android-helper/build/

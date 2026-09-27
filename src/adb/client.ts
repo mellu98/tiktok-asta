@@ -28,6 +28,8 @@ export class AdbError extends Error {
 
 interface ExecOptions {
   timeoutMs?: number;
+  /** Solo execAdbText: accoda stderr a stdout (es. errori di `uiautomator dump`). */
+  includeStderr?: boolean;
 }
 
 /** Esegue adb e restituisce stdout come testo (utf-8). */
@@ -49,7 +51,7 @@ export function execAdbText(
           reject(adbErrorFrom(err, stderr));
           return;
         }
-        resolve(stdout);
+        resolve(opts.includeStderr ? `${stdout}${stderr}` : stdout);
       },
     );
   });
