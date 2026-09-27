@@ -8,38 +8,51 @@ import { spawn, type ChildProcess } from "node:child_process";
 
 export interface ScrcpyHooks {
   onStarted(serial: string, pid: number): void;
-  onExit(serial: string, code: number | null): void;
+  /** detail: ultima riga di stderr di scrcpy (il motivo, se è uscito con errore). */
+  onExit(serial: string, code: number | null, detail: string): void;
   onError(serial: string, message: string): void;
 }
 
 const SCRCPY_BIN = process.env.POC_SCRCPY_BIN || "scrcpy";
 const ADB_PATH = process.env.POC_ADB_BIN;
+const STDERR_TAIL_CHARS = 2000;
 
 /** Costruisce gli argomenti di scrcpy — isolata per essere testabile. */
-export function buildScrcpyArgs(
-  serial: string,
-  windowTitle: string,
-  adbPath?: string,
-): string[] {
-  const args = ["-s", serial, "--window-title", windowTitle];
-  if (adbPath) {
-    args.push("--adb", adbPath);
-  }
-  return args;
+export function buildScrcpyArgs(serial: string, windowTitle: string): string[] {
+  return ["-s", serial, "--window-title", windowTitle];
+}
+
+/**
+ * scrcpy non ha un'opzione --adb (con --adb esce subito con codice 1):
+ * il binario adb da usare si indica con la variabile d'ambiente ADB.
+ */
+export function buildScrcpyEnv(
+  baseEnv: NodeJS.ProcessEnv,
+  adbPath: string | undefined,
+): NodeJS.ProcessEnv {
+  return adbPath ? { ...baseEnv, ADB: adbPath } : { ...baseEnv };
+}
+
+/** Ultima riga non vuota di stderr: è lì che scrcpy scrive perché è uscito. */
+export function lastStderrLine(stderr: string): string {
+  const lines = stderr.split(/\r?\n/).map((l) => l.trim());
+  return lines.filter((l) => l.length > 0).pop() ?? "";
 }
 
 class ScrcpyLauncher {
   private readonly procs = new Map<string, Set<ChildProcess>>();
 
   start(serial: string, windowTitle: string, hooks: ScrcpyHooks): number {
-    const child = spawn(
-      SCRCPY_BIN,
-      buildScrcpyArgs(serial, windowTitle, ADB_PATH),
-      {
-        stdio: "ignore",
-        env: process.env,
-      },
-    );
+    const child = spawn(SCRCPY_BIN, buildScrcpyArgs(serial, windowTitle), {
+      stdio: ["ignore", "ignore", "pipe"],
+      env: buildScrcpyEnv(process.env, ADB_PATH),
+    });
+
+    let stderrTail = "";
+    child.stderr?.setEncoding("utf8");
+    child.stderr?.on("data", (chunk: string) => {
+      stderrTail = (stderrTail + chunk).slice(-STDERR_TAIL_CHARS);
+    });
 
     const set = this.procs.get(serial) ?? new Set<ChildProcess>();
     set.add(child);
@@ -54,9 +67,10 @@ class ScrcpyLauncher {
       hooks.onError(serial, message);
     });
 
-    child.on("exit", (code) => {
+    // "close" (non "exit"): stderr è già stato letto tutto
+    child.on("close", (code) => {
       this.remove(serial, child);
-      hooks.onExit(serial, code);
+      hooks.onExit(serial, code, lastStderrLine(stderrTail));
     });
 
     hooks.onStarted(serial, child.pid ?? -1);
