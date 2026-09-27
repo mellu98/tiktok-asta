@@ -70,9 +70,15 @@ il pulsante **Avvia mirroring**. Da terminale manuale: `scrcpy -s <SERIAL>`.
 (video + commenti sempre in movimento) lo stato idle non arriva mai: dopo ~12 s
 uiautomator rinuncia e il round va in **skip** (fail-closed, nessun tap).
 Verificato su Samsung SM-A057G / Android 15: quasi tutti i tentativi falliscono.
-Anche quando il dump riesce, la card dell'asta arriva come contenitori
-(`ViewGroup`) **senza testo né content-desc**: «Offri N €» e il prezzo non sono
-leggibili via uiautomator. Serve un canale di lettura diverso.
+Anche quando il dump riesce, il prezzo non è esposto. Per questo i round
+leggono la card con **screenshot + OCR** (vedi docs/ARCHITECTURE.md); il dump
+resta solo come dettaglio facoltativo in «Analizza schermata».
+
+## Round: «OCR: compilazione dell'helper non riuscita (serve swiftc)»
+
+In dev l'helper OCR si compila al primo round da `tools/ocr/ocr.swift`.
+Installa gli strumenti Xcode (`xcode-select --install`) e riprova. Nell'app
+installata l'helper è già incluso.
 
 ## Homebrew: «command not found: brew» (Apple Silicon)
 

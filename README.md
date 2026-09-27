@@ -72,6 +72,7 @@ Guida per tester passo-passo: [docs/TESTER-MACOS.md](docs/TESTER-MACOS.md)
 | Input manuale | tap, swipe, testo, HOME, BACK, ENTER |
 | Log operativo | live in dashboard + `logs/activity.log` |
 | Multi-device ready | ogni operazione è namespaced per seriale |
+| Lettura card asta TikTok | screenshot raw + OCR Vision: fase, timer, prezzo, «Offri N €» ([dettagli](docs/ARCHITECTURE.md)) |
 
 ## Comandi
 
@@ -130,6 +131,7 @@ Dettagli e motivazioni: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 - macOS (Apple Silicon o Intel), Node ≥ 20
 - Homebrew (per `adb` e `scrcpy`, installati da fonti ufficiali)
+- Strumenti Xcode (`xcode-select --install`): in dev compilano l'helper OCR
 - Android ≥ 5.0 con Debug USB (scrcpy richiede API 21+)
 
 ## Licenza

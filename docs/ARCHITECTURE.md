@@ -26,6 +26,12 @@
 │  src/adb/screenshots.ts  exec-out screencap -p                 │
 │  src/adb/apps.ts         pm list packages, monkey launch       │
 │  src/scrcpy/launcher.ts  spawn scrcpy -s SERIAL, tracciamento  │
+├────────────────────────────────────────────────────────────────┤
+│ Automazione asta (src/auction/, src/vision/)                   │
+│  vision/ocr.ts     screencap raw → helper OCR (Vision, macOS)  │
+│  auction/card.ts   righe OCR → fase, timer, prezzo, «Offri N €»│
+│  auction/decide.ts guardie fail-closed, conferma, verifica     │
+│  auction/engine.ts lettura → decisione → conferma → (tap)      │
 └──────┬──────────────────────────────┬──────────────────────────┘
        │                              │
        ▼                              ▼
@@ -71,6 +77,38 @@ Per una dashboard di controllo umano, 1.5s di latenza sono irrilevanti.
 - Input testo verso il device: whitelist caratteri + `%s` per gli spazi.
 - Package app validati con regex prima di `monkey -p`.
 - Nessuna credenziale, nessuna porta ADB esposta (niente `adb tcpip`).
+
+## Lettura della card asta: screenshot + OCR, non uiautomator
+
+Misurato su Samsung SM-A057G / Android 15, LIVE TikTok (27/09/2026):
+
+| Canale | Riuscita | Tempo | Cosa legge |
+| --- | --- | --- | --- |
+| `uiautomator dump` | 23/44 (52%) | 2,7–12,7 s | timer e «Offri N €» quando riesce; mai il prezzo |
+| screencap raw + OCR Vision | 327/327 frame | ~1,0 s + ~0,3 s | timer, prezzo, pulsante, articolo, fase |
+
+Sulle LIVE lo stato idle di uiautomator non arriva quasi mai, e la card asta
+non espone il prezzo all'accessibilità. L'helper `tools/ocr/ocr.swift` riceve
+il frame raw da `adb exec-out screencap` su stdin e legge solo la metà bassa
+dello schermo. È bundled accanto ad adb nell'app; in dev si compila al primo
+uso con `swiftc` (cache in `.cache/ocr/`).
+
+Fasi della card riconosciute (`src/auction/card.ts`): in arrivo → in corso
+(timer `MM:SS`, 60 s) → ultimi secondi (`Ns`; ogni offerta riporta il timer a
+10 s) → 0s (il pulsante può restare visibile per minuti: mai toccarlo) →
+aggiudicata («Offerta finale») → in attesa del prossimo articolo.
+
+Regole (`src/auction/decide.ts`), tutte fail-closed:
+
+- si agisce solo in corso / ultimi secondi con timer ≥ 2 s;
+- la prossima offerta è la cifra di «Offri N €» (valida solo con «Personalizzato»
+  sulla stessa riga), confrontata con l'offerta massima;
+- prezzo e pulsante devono essere coerenti (si aggiornano in momenti diversi);
+- seconda lettura subito prima di agire: stesso articolo, stesso importo;
+- il limite di offerte è per articolo (titolo normalizzato sulla card, senza il
+  contatore `#N`: più unità dello stesso prodotto contano come un articolo;
+  «♻ Nuova asta» azzera il contatore);
+- dopo il tap, esito verificato sul prezzo («UI cambiata» è sempre vero su una LIVE).
 
 ## Struttura monorepo (semplificata)
 
