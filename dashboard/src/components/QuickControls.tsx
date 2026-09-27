@@ -1,4 +1,12 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import {
+  TAP_COUNT_MAX,
+  TAP_COUNT_MIN,
+  TAP_INTERVAL_MAX_MS,
+  TAP_INTERVAL_MIN_MS,
+  parseTapSequence,
+  runTapSequence,
+} from "../../../src/shared/tap-sequence";
 import type { AndroidDevice } from "../../../src/shared/types";
 
 interface Props {
@@ -27,13 +35,90 @@ export function QuickControls({
     durationMs: "300",
   });
   const [text, setText] = useState("");
+  const [tapCount, setTapCount] = useState("1");
+  const [tapIntervalMs, setTapIntervalMs] = useState("1000");
+  const [tapProgress, setTapProgress] = useState<{
+    done: number;
+    total: number;
+  } | null>(null);
+  const cancelTapsRef = useRef(false);
+  const wakeWaitRef = useRef<(() => void) | null>(null);
+  const tapLockRef = useRef(false);
 
   const serial = device.serial;
+  const tapsRunning = tapProgress !== null;
 
+  /** Ferma la sequenza: nessun altro tap parte, l'attesa in corso si chiude subito. */
+  const stopTaps = () => {
+    cancelTapsRef.current = true;
+    wakeWaitRef.current?.();
+  };
+
+  // Cambio dispositivo o pannello smontato: la sequenza in corso si ferma
+  useEffect(() => stopTaps, [serial]);
+
+  const waitOrStop = (ms: number) =>
+    new Promise<void>((resolve) => {
+      const finish = () => {
+        window.clearTimeout(timer);
+        wakeWaitRef.current = null;
+        resolve();
+      };
+      const timer = window.setTimeout(finish, ms);
+      wakeWaitRef.current = finish;
+    });
+
+  const executeTaps = async () => {
+    const parsed = parseTapSequence(tapCount, tapIntervalMs);
+    if (!parsed.ok) {
+      onError(parsed.error);
+      return;
+    }
+    const { plan } = parsed;
+    const tapX = Number(x);
+    const tapY = Number(y);
+    const { Api } = await import("../api");
+    const tapOnce = async () => {
+      await Api.tap(serial, tapX, tapY);
+    };
+
+    if (plan.count === 1) {
+      await tapOnce();
+      return;
+    }
+    if (
+      !window.confirm(
+        `Eseguire ${plan.count} tap in (${tapX}, ${tapY}), uno ogni ${plan.intervalMs} ms?`,
+      )
+    ) {
+      return;
+    }
+
+    cancelTapsRef.current = false;
+    setTapProgress({ done: 0, total: plan.count });
+    try {
+      await runTapSequence(plan, {
+        tap: tapOnce,
+        wait: waitOrStop,
+        isCancelled: () => cancelTapsRef.current,
+        onProgress: (done, total) => setTapProgress({ done, total }),
+      });
+    } finally {
+      setTapProgress(null);
+    }
+  };
+
+  // Blocco sincrono (ref, non state: lo state arriva al pulsante solo al render
+  // successivo): un doppio clic su Invia non deve avviare due tap o due sequenze
   const sendTap = () =>
     run(async () => {
-      const { Api } = await import("../api");
-      await Api.tap(serial, Number(x), Number(y));
+      if (tapLockRef.current) return;
+      tapLockRef.current = true;
+      try {
+        await executeTaps();
+      } finally {
+        tapLockRef.current = false;
+      }
     });
 
   const sendSwipe = () =>
@@ -98,12 +183,13 @@ export function QuickControls({
       <div className="qc-grid">
         <div className="qc-box">
           <h3>Tap</h3>
-          <div className="field-row">
+          <div className="field-row wrap">
             <label>
               X{" "}
               <input
                 type="number"
                 value={x}
+                disabled={tapsRunning}
                 onChange={(e) => setX(e.target.value)}
               />
             </label>
@@ -112,17 +198,53 @@ export function QuickControls({
               <input
                 type="number"
                 value={y}
+                disabled={tapsRunning}
                 onChange={(e) => setY(e.target.value)}
               />
             </label>
-            <button
-              className="btn"
-              onClick={() => void sendTap()}
-              disabled={!authorized}
-            >
-              Invia
-            </button>
+            <label>
+              Numero tap{" "}
+              <input
+                type="number"
+                min={TAP_COUNT_MIN}
+                max={TAP_COUNT_MAX}
+                step={1}
+                value={tapCount}
+                disabled={tapsRunning}
+                onChange={(e) => setTapCount(e.target.value)}
+              />
+            </label>
+            <label>
+              Attesa ms{" "}
+              <input
+                type="number"
+                min={TAP_INTERVAL_MIN_MS}
+                max={TAP_INTERVAL_MAX_MS}
+                step={100}
+                value={tapIntervalMs}
+                disabled={tapsRunning || tapCount.trim() === "1"}
+                onChange={(e) => setTapIntervalMs(e.target.value)}
+              />
+            </label>
+            {tapsRunning ? (
+              <button className="btn warn" onClick={stopTaps}>
+                ■ Stop ({tapProgress.done}/{tapProgress.total})
+              </button>
+            ) : (
+              <button
+                className="btn"
+                onClick={() => void sendTap()}
+                disabled={!authorized}
+              >
+                Invia
+              </button>
+            )}
           </div>
+          <p className="note">
+            Più tap sullo stesso punto: da {TAP_COUNT_MIN} a {TAP_COUNT_MAX},
+            con conferma prima di partire. L'attesa parte quando il tap
+            precedente è stato eseguito. Stop blocca subito i tap successivi.
+          </p>
         </div>
 
         <div className="qc-box">
