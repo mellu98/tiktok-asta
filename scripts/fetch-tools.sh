@@ -74,6 +74,9 @@ tar -xzf "$WORK/$SCRCPY_ASSET" -C "$WORK"
 EXTRACTED="$WORK/scrcpy-macos-${SCRCPY_ARCH}-${SCRCPY_TAG}"
 cp "$EXTRACTED/scrcpy" "$TOOLS_DIR/scrcpy"
 cp "$EXTRACTED/scrcpy-server" "$TOOLS_DIR/scrcpy-server"
+# icone cercate da scrcpy accanto al binario (senza: "Could not load icon")
+cp "$EXTRACTED/scrcpy.png" "$TOOLS_DIR/scrcpy.png"
+cp "$EXTRACTED/disconnected.png" "$TOOLS_DIR/disconnected.png"
 chmod +x "$TOOLS_DIR/scrcpy"
 echo "  scrcpy installato: $("$TOOLS_DIR/scrcpy" --version 2>/dev/null | head -1)"
 

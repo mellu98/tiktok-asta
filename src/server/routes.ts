@@ -355,11 +355,13 @@ export function buildRouter(deps: Deps): Router {
           activityLog.add("success", "scrcpy", `Mirroring attivo (${s})`);
           wsHub.broadcast({ type: "scrcpy", serial: s, status: "running" });
         },
-        onExit: (s, code) => {
+        onExit: (s, code, detail) => {
           activityLog.add(
-            "info",
+            detail ? "error" : "info",
             "scrcpy",
-            `Mirroring terminato (${s}), codice ${code ?? "?"}`,
+            detail
+              ? `Mirroring fallito (${s}) — ${detail}`
+              : `Mirroring terminato (${s}), codice ${code ?? "?"}`,
           );
           wsHub.broadcast({
             type: "scrcpy",
