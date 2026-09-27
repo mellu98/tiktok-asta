@@ -11,6 +11,7 @@
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import { uiDumpsDir } from "./base-dir";
@@ -43,12 +44,11 @@ function sleep(ms: number): Promise<void> {
 }
 
 /** Salva l'XML nella cartella canonica e ritorna il percorso. */
-export function saveXmlDump(serial: string, xml: string): string {
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+export function saveXmlDump(serial: string, runId: string, xml: string): string {
   const safeSerial = serial.replace(/[^A-Za-z0-9._-]/g, "_");
   const dir = uiDumpsDir();
   mkdirSync(dir, { recursive: true });
-  const file = join(dir, `window_${safeSerial}_${stamp}.xml`);
+  const file = join(dir, `ui_${safeSerial}_${runId}.xml`);
   writeFileSync(file, xml, "utf8");
   return file;
 }
@@ -85,6 +85,7 @@ function toJournal(
   return {
     ts: Date.now(),
     serial: base.serial,
+    runId: base.runId,
     auctionId: base.auctionId,
     kind,
     decision: base.decision,
@@ -117,10 +118,14 @@ export async function runRound(
 ): Promise<RoundResult> {
   const config = loadConfig();
   const timings = emptyTimings();
+  // ID di correlazione: stesso id per XML + screenshot dello stesso round
+  const runId = randomBytes(4).toString("hex");
 
   const base: RoundResult = {
     serial,
     mode,
+    runId,
+    uiDumpAvailable: false,
     auctionId: null,
     decision: "skip",
     reason: "",
@@ -157,9 +162,20 @@ export async function runRound(
         timings.dumpMs = Math.round(now() - t);
       } catch (err) {
         base.error = err instanceof Error ? err.message : String(err);
-        return skipResult(base, "dump UI non riuscito", "evaluate");
+        base.uiDumpAvailable = false;
+        // P0 fail-closed: nessun candidato, nessuna coordinata, nessun tap.
+        // Screenshot comunque salvato per la diagnostica.
+        try {
+          base.screenshotFile = (await captureAndSave(serial, runId)).file;
+        } catch {
+          // best effort: lo screenshot può fallire quanto il resto
+        }
+        base.reason = `ui_dump_unavailable — Gerarchia UI non disponibile su questa schermata: ${base.error}`;
+        appendJournal(toJournal(base, "evaluate", null, null, timings));
+        return base;
       }
-      base.xmlFile = saveXmlDump(serial, xml);
+      base.uiDumpAvailable = true;
+      base.xmlFile = saveXmlDump(serial, runId, xml);
 
       // ── 2. RICONOSCIMENTO ──────────────────────────────────────────────
       const tParse = now();
@@ -289,7 +305,7 @@ export async function runRound(
       }
 
       try {
-        const shot = await captureAndSave(serial);
+        const shot = await captureAndSave(serial, runId);
         base.screenshotFile = shot.file;
       } catch {
         // screenshot non critico per la decisione

@@ -12,8 +12,9 @@ describe("buildScrcpyArgs", () => {
     ]);
   });
 
-  it("non include mai opzioni pericolose o selettori multipli", () => {
+  it("non include mai --adb (non supportato da scrcpy 4.x) né opzioni pericolose", () => {
     const args = buildScrcpyArgs("DEV-1", "Titolo");
+    expect(args.join(" ")).not.toMatch(/--adb/);
     expect(args.join(" ")).not.toMatch(/--serial/);
     expect(args.filter((a) => a === "-s")).toHaveLength(1);
   });

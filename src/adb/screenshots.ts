@@ -27,11 +27,12 @@ export interface SavedScreenshot {
 export function saveScreenshotFile(
  serial: string,
  png: Buffer,
+ runId?: string,
 ): SavedScreenshot {
  mkdirSync(screenshotsDir(), { recursive: true });
- const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
  const safeSerial = serial.replace(/[^A-Za-z0-9._-]/g, "_");
- const file = join(screenshotsDir(), `screen_${safeSerial}_${stamp}.png`);
+ const correlation = runId ? `_${runId}` : "";
+ const file = join(screenshotsDir(), `screen_${safeSerial}${correlation}.png`);
  writeFileSync(file, png);
  return {
   file,
@@ -40,7 +41,10 @@ export function saveScreenshotFile(
 }
 
 /** Screenshot + salvataggio in una sola chiamata. */
-export async function captureAndSave(serial: string): Promise<SavedScreenshot> {
+export async function captureAndSave(
+ serial: string,
+ runId?: string,
+): Promise<SavedScreenshot> {
  const png = await takeScreenshot(serial);
- return saveScreenshotFile(serial, png);
+ return saveScreenshotFile(serial, png, runId);
 }

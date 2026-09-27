@@ -17,6 +17,8 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p dashboard",
     "lint": "eslint .",
     "test": "vitest run",
+    "measure:latency": "tsx scripts/measure-latency.ts",
+    "test:packaged": "bash scripts/test-packaged.sh",
     "setup": "bash scripts/setup-macos.sh",
     "doctor": "bash scripts/doctor.sh",
     "uninstall": "bash scripts/uninstall.sh",

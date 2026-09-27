@@ -111,9 +111,13 @@ Dettagli e motivazioni: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - Server bindato solo su `127.0.0.1`: nessuna porta esposta su Internet.
 - Nessuna credenziale nel repository (vedi `.env.example` per le variabili opzionali).
 - Comandi adb eseguiti con `execFile` (no shell) + input sanitizzato.
-- Il progetto è una piattaforma **generica** di controllo e test Android: non implementa
-  né intende implementare automazioni di offerte/transazioni, bypass di controlli
-  anti-abuse, spoofing o mascheramento di attività.
+- Il progetto è una piattaforma di **controllo e test Android** che include un
+  percorso di **analisi UI e dry-run** per schermate di asta (riconoscimento
+  del pulsante Offri con punteggio di confidenza, stima prezzo, limiti
+  economici, arresto di emergenza): il dry-run è il default, i tap reali
+  richiedono conferma esplicita e sono **non ancora validati su hardware
+  reale**. Non implementa automazioni di offerte/transazioni automatiche
+  end-to-end, bypass di controlli anti-abuse, spoofing o mascheramento di attività.
 
 ## Roadmap
 

@@ -95,6 +95,8 @@ export interface AuctionConfig {
 export interface JournalEntry {
   ts: number;
   serial: string;
+  /** ID di correlazione round (XML + screenshot dello stesso round). */
+  runId: string | null;
   auctionId: string | null;
   kind: "evaluate" | "dry" | "offer";
   decision: "offer" | "skip";
@@ -128,6 +130,10 @@ export interface RoundTimings {
 export interface RoundResult {
   serial: string;
   mode: "evaluate" | "dry" | "live";
+  /** ID di correlazione: stesso id per XML + screenshot del round. */
+  runId: string;
+  /** false = gerarchia UI non disponibile su questa schermata (fail-closed). */
+  uiDumpAvailable: boolean;
   auctionId: string | null;
   decision: "offer" | "skip";
   reason: string;
@@ -172,8 +178,14 @@ export interface UiNode {
 /** Risposta di POST /api/devices/:serial/auction/analyze */
 export interface AuctionAnalysis {
   screenshot: ScreenshotResult;
-  /** Percorso dell'XML raw salvato per debug. */
-  xmlFile: string;
+  /** ID di correlazione round (screenshot + eventuale XML). */
+  runId?: string;
+  /** false = gerarchia UI non disponibile (es. uiautomator non idle su TikTok LIVE). */
+  uiDumpAvailable?: boolean;
+  /** Dettaglio dell'errore di dump quando uiDumpAvailable è false. */
+  dumpError?: string;
+  /** Percorso dell'XML raw salvato per debug (null se il dump non è disponibile). */
+  xmlFile: string | null;
   nodeCount: number;
   /** Nodi che contengono keyword dell'asta (Offri, €, prezzo…). */
   matches: UiNode[];

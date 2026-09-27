@@ -74,7 +74,8 @@ export function AuctionModal({
         <p className="note">
           {analysis.nodeCount} nodi · schermo ~{analysis.screenSize.width}×
           {analysis.screenSize.height} · {analysis.clickableNodes.length}{" "}
-          clickabili · XML raw: <code>{analysis.xmlFile}</code>
+          clickabili · XML raw:{" "}
+          {analysis.xmlFile ? <code>{analysis.xmlFile}</code> : "non disponibile (dump fallito)"}
         </p>
 
         <img
@@ -88,7 +89,26 @@ export function AuctionModal({
             Candidati asta ({analysis.matches.length}) — Offri / offerta / € /
             prezzo
           </h3>
-          {analysis.matches.length === 0 ? (
+          {analysis.uiDumpAvailable === false ? (
+            <div className="offer-panel warnp">
+              <p>
+                <strong>
+                  Gerarchia UI non disponibile su questa schermata
+                </strong>
+              </p>
+              <p className="note">
+                uiautomator non riesce a leggere la UI (tipico su TikTok LIVE:
+                schermo in movimento). Nessun candidato derivato da XML
+                vecchi. Riprova su una schermata ferma o usa lo screenshot per
+                la diagnostica.
+              </p>
+              {analysis.dumpError && (
+                <p className="note">
+                  <code>{analysis.dumpError}</code>
+                </p>
+              )}
+            </div>
+          ) : analysis.matches.length === 0 ? (
             <p className="note">
               Nessun nodo con keyword asta trovato nell'albero. Vedi lista
               clickabili sotto e XML raw per il fallback a coordinate fissa.

@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { randomBytes } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { listInstalledApps, launchApp } from "../adb/apps";
 import {
@@ -38,10 +39,6 @@ import type { WsHub } from "./ws";
  * mode=live, che applica TUTTE le guardie (estop, dry-run, punteggio,
  * prezzo, limiti) — fail-closed.
  */
-
-function stampNow(): string {
-  return new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-}
 
 function safeSerial(serial: string): string {
   return serial.replace(/[^A-Za-z0-9._-]/g, "_");
@@ -100,16 +97,32 @@ export function buildRouter(deps: Deps): Router {
   router.post("/devices/:serial/auction/analyze", async (req, res) => {
     try {
       const serial = requireSerial(req);
-      const xml = await dumpUiHierarchy(serial);
-      const nodes = parseUiHierarchy(xml);
-      const matches = findCandidateAuctionNodes(nodes);
+      const runId = randomBytes(4).toString("hex");
+
+      // P0 fail-closed: se il dump fallisce (es. uiautomator non idle su
+      // TikTok LIVE) → screenshot + errore diagnostico, NESSUN candidato.
+      let xml: string | null = null;
+      let dumpError: string | null = null;
+      try {
+        xml = await dumpUiHierarchy(serial);
+      } catch (err) {
+        dumpError = err instanceof Error ? err.message : String(err);
+      }
+
+      const screenshot = await captureAndSave(serial, runId);
+
+      let nodes = parseUiHierarchy(xml ?? "");
+      if (dumpError !== null) nodes = [];
 
       const { mkdirSync } = await import("node:fs");
-      mkdirSync(uiDumpsDir(), { recursive: true });
-      const xmlFile = `${uiDumpsDir()}/window_${safeSerial(serial)}_${stampNow()}.xml`;
-      writeFileSync(xmlFile, xml, "utf8");
+      let xmlFile: string | null = null;
+      if (xml !== null) {
+        mkdirSync(uiDumpsDir(), { recursive: true });
+        xmlFile = `${uiDumpsDir()}/ui_${safeSerial(serial)}_${runId}.xml`;
+        writeFileSync(xmlFile, xml, "utf8");
+      }
 
-      const screenshot = await captureAndSave(serial);
+      const matches = xml === null ? [] : findCandidateAuctionNodes(nodes);
 
       let width = 0;
       let height = 0;
@@ -121,15 +134,20 @@ export function buildRouter(deps: Deps): Router {
       const analysis: AuctionAnalysis = {
         screenshot,
         xmlFile,
+        runId,
+        uiDumpAvailable: dumpError === null,
+        dumpError: dumpError ?? undefined,
         nodeCount: nodes.length,
         matches,
         clickableNodes: nodes.filter((n) => n.clickable).slice(0, 120),
         screenSize: { width, height },
       };
       activityLog.add(
-        matches.length > 0 ? "success" : "warn",
+        dumpError === null && matches.length > 0 ? "success" : "warn",
         "adb",
-        `Analisi schermata: ${nodes.length} nodi, ${matches.length} candidati Offri/offerta/€/prezzo — XML: ${xmlFile}`,
+        dumpError !== null
+          ? `Analisi: gerarchia UI NON disponibile — screenshot salvato. ${dumpError}`
+          : `Analisi schermata: ${nodes.length} nodi, ${matches.length} candidati Offri/offerta/€/prezzo — XML: ${xmlFile}`,
       );
       ok(res, analysis);
     } catch (err) {
@@ -349,11 +367,11 @@ export function buildRouter(deps: Deps): Router {
           activityLog.add("success", "scrcpy", `Mirroring attivo (${s})`);
           wsHub.broadcast({ type: "scrcpy", serial: s, status: "running" });
         },
-        onExit: (s, code) => {
+        onExit: (s, code, stderrTail) => {
           activityLog.add(
             "info",
             "scrcpy",
-            `Mirroring terminato (${s}), codice ${code ?? "?"}`,
+            `Mirroring terminato (${s}), codice ${code ?? "?"}${stderrTail ? ` — ${stderrTail}` : ""}`,
           );
           wsHub.broadcast({
             type: "scrcpy",
