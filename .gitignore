@@ -21,3 +21,6 @@ src-tauri/resources/tools/*
 ui-dumps/*
 !ui-dumps/.gitkeep
 *.bun-build
+auction-state.json
+auction-safety.json
+auction-config.json

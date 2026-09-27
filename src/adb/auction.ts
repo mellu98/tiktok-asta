@@ -1,6 +1,6 @@
 import type { ClickOfferResult, UiNode } from "../shared/types";
 import { tap } from "./commands";
-import { execAdbBinary, execAdbText } from "./client";
+import { execAdbText } from "./client";
 
 /**
  * Diagnostica asta TikTok via uiautomator nativo Android.
@@ -18,26 +18,24 @@ const DUMP_PATH = "/sdcard/window.xml";
 const DUMP_TIMEOUT_MS = 20000; // uiautomator può metterci parecchi secondi
 const TAP_SETTLE_MS = 2000;
 
-/** Esegue `uiautomator dump` e legge l'XML. Un solo retry se la UI non è idle. */
+/**
+ * Esegue `uiautomator dump` e legge l'XML in UN SOLO spawn adb
+ * (dump + cat combinati nella stessa shell del device → meno round-trip).
+ * Un solo retry se la UI non è idle.
+ */
 export async function dumpUiHierarchy(serial: string): Promise<string> {
+  const combined = `uiautomator dump ${DUMP_PATH} && cat ${DUMP_PATH}`;
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
-    const out = await execAdbText(
-      ["-s", serial, "shell", "uiautomator", "dump", DUMP_PATH],
-      { timeoutMs: DUMP_TIMEOUT_MS },
-    );
-    // Nota: il messaggio di successo di Android contiene il typo "hierchary"
-    if (/dumped to/i.test(out)) {
-      const xml = await execAdbBinary(
-        ["-s", serial, "exec-out", "cat", DUMP_PATH],
-        { timeoutMs: DUMP_TIMEOUT_MS },
-      );
-      const text = xml.toString("utf8");
-      if (text.includes("<node")) return text;
-      lastError = new Error(
-        "L'XML letto dal dispositivo non contiene nodi UI — riprova a schermo acceso e stabile",
-      );
-    } else if (/ERROR/i.test(out)) {
+    const out = await execAdbText(["-s", serial, "shell", combined], {
+      timeoutMs: DUMP_TIMEOUT_MS,
+    });
+    const markerIdx = out.indexOf("<node");
+    if (markerIdx !== -1) {
+      const xmlStart = out.lastIndexOf("<?xml", markerIdx);
+      return xmlStart === -1 ? out.slice(out.lastIndexOf("\n", markerIdx) + 1) : out.slice(xmlStart);
+    }
+    if (/ERROR/i.test(out)) {
       // Tipico: "ERROR: could not get idle state." (UI in transizione)
       lastError = new Error(
         `uiautomator non riesce a leggere la UI (schermata in movimento o non idle). Dettaglio: ${out.trim().slice(0, 200)}`,
@@ -109,7 +107,8 @@ export function parseUiHierarchy(xml: string): UiNode[] {
 
 const KEYWORD_RE = /offri|offerta|prezzo|€|eur\b|bid/i;
 /** Importi tipo "1.234 €", "€ 500", "12,50 €", "999€". */
-const PRICE_LIKE_RE = /(?:\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?|[.,]\d{2})\s*€|€\s*\d/i;
+const PRICE_LIKE_RE =
+  /(?:\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?|[.,]\d{2})\s*€|€\s*\d/i;
 
 /** True se il nodo parla di asta/offerta (text, content-desc o resource-id). */
 export function looksLikeAuctionNode(node: UiNode): boolean {
@@ -135,9 +134,7 @@ function offerRank(node: UiNode): number {
 }
 
 function area(node: UiNode): number {
-  return (
-    (node.bounds.x2 - node.bounds.x1) * (node.bounds.y2 - node.bounds.y1)
-  );
+  return (node.bounds.x2 - node.bounds.x1) * (node.bounds.y2 - node.bounds.y1);
 }
 
 /**

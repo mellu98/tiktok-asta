@@ -73,6 +73,85 @@ export interface ScreenshotResult {
     dataUrl: string;
 }
 
+/* ── Automazione asta TikTok ─────────────────────────────────────────── */
+
+/** Configurazione limiti/modalità automazione (persistita lato server). */
+export interface AuctionConfig {
+  /** Prezzo massimo (€) della prossima offerta: sopra questo valore nessun tap. */
+  maxBidEur: number;
+  /** Numero massimo di offerte per singola asta. */
+  maxOffersPerAuction: number;
+  /** Soglia minima di confidenza (0-100) sul pulsante Offri. */
+  confidenceThreshold: number;
+  /** Soglia minima di confidenza (0-100) sulla lettura del prezzo. */
+  priceConfidenceThreshold: number;
+  /** true (default) = nessun tap reale, solo valutazione. */
+  dryRun: boolean;
+  /** ms fra i round in modalità automatica. 0 = auto OFF (default). */
+  autoRoundMs: number;
+}
+
+/** Voce del journal delle decisioni (una riga JSONL per round). */
+export interface JournalEntry {
+  ts: number;
+  serial: string;
+  auctionId: string | null;
+  kind: "evaluate" | "dry" | "offer";
+  decision: "offer" | "skip";
+  reason: string;
+  priceEur: number | null;
+  priceConfidence: number | null;
+  buttonScore: number | null;
+  buttonCenter: { x: number; y: number } | null;
+  limits: {
+    maxBidEur: number;
+    maxOffersPerAuction: number;
+    offersSpent: number;
+    confidenceThreshold: number;
+  };
+  xmlFile: string | null;
+  screenshotFile: string | null;
+  commandError: string | null;
+  uiChangedAfterTap: boolean | null;
+  timings?: RoundTimings;
+}
+
+export interface RoundTimings {
+    dumpMs: number;
+    parseMs: number;
+    decideMs: number;
+    tapMs: number | null;
+    verifyMs: number | null;
+}
+
+/** Esito di un round di automazione (valutazione, dry-run o live). */
+export interface RoundResult {
+    serial: string;
+    mode: "evaluate" | "dry" | "live";
+    auctionId: string | null;
+    decision: "offer" | "skip";
+    reason: string;
+    buttonScore: number | null;
+    buttonLabel: string | null;
+    buttonCenter: { x: number; y: number } | null;
+    priceEur: number | null;
+    priceConfidence: number | null;
+    offersSpent: number;
+    limits: {
+        maxBidEur: number;
+        maxOffersPerAuction: number;
+        confidenceThreshold: number;
+        priceConfidenceThreshold: number;
+        dryRun: boolean;
+        estopEngaged: boolean;
+    };
+    xmlFile: string | null;
+    screenshotFile: string | null;
+    uiChangedAfterTap: boolean | null;
+    error: string | null;
+    timings: RoundTimings;
+}
+
 /* ── Diagnostica asta TikTok (uiautomator) ─────────────────────────────── */
 
 /** Nodo dell'albero UI estratto da `uiautomator dump`. */

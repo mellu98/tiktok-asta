@@ -2,11 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AuctionAnalysis,
   AndroidDevice,
-  ClickOfferResult,
   LogEntry,
+  RoundResult,
   WsServerMessage,
 } from "../../src/shared/types";
-import { Api, SERVER_WS } from "./api";
+import { Api, ensureSession, serverWs } from "./api";
 import { DeviceCard } from "./components/DeviceCard";
 import { QuickControls } from "./components/QuickControls";
 import { LogPanel } from "./components/LogPanel";
@@ -14,6 +14,7 @@ import { ScreenshotModal } from "./components/ScreenshotModal";
 import { AppsModal } from "./components/AppsModal";
 import { OnboardingPanel } from "./components/OnboardingPanel";
 import { AuctionModal } from "./components/AuctionModal";
+import { AutomationPanel } from "./components/AutomationPanel";
 
 export function App() {
   const [devices, setDevices] = useState<AndroidDevice[]>([]);
@@ -29,9 +30,7 @@ export function App() {
     items: string[];
   }>({ open: false, loading: false, items: [] });
   const [auction, setAuction] = useState<AuctionAnalysis | null>(null);
-  const [offerResult, setOfferResult] = useState<ClickOfferResult | null>(
-    null,
-  );
+  const [round, setRound] = useState<RoundResult | null>(null);
   const [scrcpyRunning, setScrcpyRunning] = useState<Record<string, boolean>>(
     {},
   );
@@ -84,13 +83,12 @@ export function App() {
 
     const connect = () => {
       if (disposed) return;
-      ws = new WebSocket(SERVER_WS);
+      ws = new WebSocket(serverWs());
       ws.onmessage = handleMessage;
       ws.onclose = () => {
         if (!disposed) window.setTimeout(connect, 3000);
       };
     };
-    connect();
 
     const initialLoad = async () => {
       if (disposed) return;
@@ -103,11 +101,24 @@ export function App() {
         setLogs(logEntries);
         setServerReady(true);
       } catch {
-        // Sidecar non ancora pronto: riprova tra 2s (max ~30 tentativi)
+        // Sidecar non ancora pronto: riprova tra 2s
         retryTimer = window.setTimeout(() => void initialLoad(), 2000);
       }
     };
-    void initialLoad();
+
+    const start = async () => {
+      if (disposed) return;
+      try {
+        await ensureSession();
+      } catch {
+        // il sidecar interno si avvia qualche istante dopo l'app
+        retryTimer = window.setTimeout(() => void start(), 1000);
+        return;
+      }
+      connect();
+      await initialLoad();
+    };
+    void start();
 
     return () => {
       disposed = true;
@@ -158,11 +169,10 @@ export function App() {
         const analysis = await Api.auctionAnalyze(device.serial);
         setAuction(analysis);
       }),
-    clickOffer: (dryRun: boolean) =>
+    round: (mode: "dry" | "live") =>
       run(async () => {
         if (!device) return;
-        const result = await Api.clickOffer(device.serial, dryRun);
-        setOfferResult(result);
+        setRound(await Api.round(device.serial, mode));
       }),
     launchApp: (pkg: string) =>
       run(async () => {
@@ -258,6 +268,8 @@ export function App() {
             onError={showError}
             onOpenApps={actions.openApps}
           />
+
+          <AutomationPanel serial={device.serial} onError={showError} />
         </>
       )}
 
@@ -282,20 +294,20 @@ export function App() {
       {auction && (
         <AuctionModal
           analysis={auction}
-          offerResult={offerResult}
-          onDryRun={() => void actions.clickOffer(true)}
+          round={round}
+          onDryRun={() => void actions.round("dry")}
           onLive={() => {
             if (
               window.confirm(
                 "Eseguire UN SOLO tap reale sul pulsante Offri?",
               )
             ) {
-              void actions.clickOffer(false);
+              void actions.round("live");
             }
           }}
           onClose={() => {
             setAuction(null);
-            setOfferResult(null);
+            setRound(null);
           }}
         />
       )}

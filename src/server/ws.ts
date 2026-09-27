@@ -17,18 +17,23 @@ export class WsHub {
   }
 
   /** Attacca l'upgrade handling a un server HTTP (solo path /ws). */
-  attach(server: import("node:http").Server): void {
+  attach(server: import("node:http").Server, sessionToken?: string | null): void {
     server.on(
       "upgrade",
       (req: IncomingMessage, socket: Duplex, head: Buffer) => {
-        const { pathname } = new URL(req.url ?? "/", "http://localhost");
-        if (pathname === "/ws") {
-          this.wss.handleUpgrade(req, socket, head, (ws) => {
-            this.wss.emit("connection", ws, req);
-          });
-        } else {
+        const url = new URL(req.url ?? "/", "http://localhost");
+        if (url.pathname !== "/ws") {
           socket.destroy();
+          return;
         }
+        // In modalità app il token di sessione è obbligatorio anche sul WS.
+        if (sessionToken && url.searchParams.get("token") !== sessionToken) {
+          socket.destroy();
+          return;
+        }
+        this.wss.handleUpgrade(req, socket, head, (ws) => {
+          this.wss.emit("connection", ws, req);
+        });
       },
     );
 

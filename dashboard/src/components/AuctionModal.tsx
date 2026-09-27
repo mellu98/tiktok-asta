@@ -1,15 +1,11 @@
-import type {
-  AuctionAnalysis,
-  ClickOfferResult,
-  UiNode,
-} from "../../../src/shared/types";
+import type { AuctionAnalysis, RoundResult, UiNode } from "../../../src/shared/types";
 
 interface Props {
-  analysis: AuctionAnalysis
-  offerResult: ClickOfferResult | null
-  onDryRun: () => void
-  onLive: () => void
-  onClose: () => void
+  analysis: AuctionAnalysis;
+  round: RoundResult | null;
+  onDryRun: () => void;
+  onLive: () => void;
+  onClose: () => void;
 }
 
 function NodeTable({ nodes }: { nodes: UiNode[] }) {
@@ -51,19 +47,13 @@ function NodeTable({ nodes }: { nodes: UiNode[] }) {
   );
 }
 
-export function AuctionModal({
-  analysis,
-  offerResult,
-  onDryRun,
-  onLive,
-  onClose,
-}: Props) {
+export function AuctionModal({ analysis, round, onDryRun, onLive, onClose }: Props) {
+  const mode = round?.mode ?? null;
+  const decision = round?.decision ?? null;
+
   return (
     <div className="overlay" onClick={onClose} role="dialog" aria-modal="true">
-      <div
-        className="modal auction"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="modal auction" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <strong>Analisi schermata TikTok</strong>
           <button className="btn small" onClick={onClose}>
@@ -102,23 +92,24 @@ export function AuctionModal({
 
         <div className="auction-section">
           <h3>Pulsante Offri</h3>
-          {!offerResult && (
+          {!round && (
             <button className="btn primary" onClick={onDryRun}>
-              🧪 Dry run: individua pulsante Offri
+              🧪 Dry run: individua pulsante Offri (nessun tap)
             </button>
           )}
 
-          {offerResult?.status === "dry-run" && offerResult.node && (
+          {round && mode !== "live" && decision === "offer" && (
             <div className="offer-panel ok">
               <p>
-                <strong>Trovato (dry run — nessun tap eseguito)</strong>
+                <strong>Condizioni soddisfatte (dry — nessun tap eseguito)</strong>
               </p>
               <p className="note">
-                text: «{offerResult.node.text}» · desc: «
-                {offerResult.node.contentDesc}» · id:{" "}
-                <code>{offerResult.node.resourceId || "—"}</code> · class:{" "}
-                {offerResult.node.className} · centro ({offerResult.center?.x},{" "}
-                {offerResult.center?.y})
+                etichetta: «{round.buttonLabel}» · punteggio{" "}
+                {round.buttonScore}/100 · centro ({round.buttonCenter?.x},{" "}
+                {round.buttonCenter?.y}) · prezzo{" "}
+                {round.priceEur !== null ? `${round.priceEur}€` : "n/d"} (
+                confidenza {round.priceConfidence ?? "n/d"}%) · offerte spese:{" "}
+                {round.offersSpent}
               </p>
               <button className="btn warn" onClick={onLive}>
                 ⚡ TAP REALE (uno solo)
@@ -126,55 +117,56 @@ export function AuctionModal({
             </div>
           )}
 
-          {offerResult?.status === "tapped" && (
-            <div
-              className={`offer-panel ${
-                offerResult.before?.signature !==
-                offerResult.after?.signature
-                  ? "ok"
-                  : "warnp"
-              }`}
-            >
+          {round && mode !== "live" && decision === "skip" && (
+            <div className="offer-panel warnp">
               <p>
-                <strong>Tap eseguito a ({offerResult.center?.x}, {offerResult.center?.y})</strong>
+                <strong>NESSUN tap: {round.reason}</strong>
               </p>
-              <p className="note">
-                UI prima: {offerResult.before?.nodeCount} nodi · dopo:{" "}
-                {offerResult.after?.nodeCount} nodi —{" "}
-                {offerResult.before?.signature !==
-                offerResult.after?.signature
-                  ? "STATO CAMBIATO ✅"
-                  : "STATO INVARIATO ⚠ (il tap forse non ha avuto effetto)"}
-              </p>
-              {offerResult.screenshotAfter && (
-                <img
-                  className="shot small"
-                  src={offerResult.screenshotAfter.dataUrl}
-                  alt="Schermata dopo il tap"
-                />
-              )}
             </div>
           )}
 
-          {offerResult?.status === "not-found" && (
-            <div className="offer-panel warnp">
+          {round && mode === "live" && (
+            <div
+              className={`offer-panel ${
+                round.uiChangedAfterTap === true ? "ok" : "warnp"
+              }`}
+            >
               <p>
                 <strong>
-                  Pulsante «Offri» NON presente nell'albero UIAutomator.
+                  Tap reale {round.decision === "offer" ? "eseguito" : "NON eseguito"}{" "}
+                  {round.buttonCenter
+                    ? `a (${round.buttonCenter.x}, ${round.buttonCenter.y})`
+                    : ""}
                 </strong>
               </p>
-              <p className="note">
-                Fallback previsto: coordinate fissa sul nostro Samsung. Candidati
-                asta trovati: {offerResult.candidates?.length ?? 0}.
-              </p>
+              <p className="note">{round.reason}</p>
+              {round.error && (
+                <p className="note">Errore comando: {round.error}</p>
+              )}
+              {round.timings && (
+                <p className="note">
+                  Latenze — dump {round.timings.dumpMs}ms · parse{" "}
+                  {round.timings.parseMs}ms · decisione{" "}
+                  {round.timings.decideMs}ms
+                  {round.timings.tapMs !== null
+                    ? ` · tap ${round.timings.tapMs}ms`
+                    : ""}
+                  {round.timings.verifyMs !== null
+                    ? ` · verifica ${round.timings.verifyMs}ms`
+                    : ""}
+                </p>
+              )}
+              {round.screenshotFile && (
+                <p className="note">
+                  Post-tap: <code>{round.screenshotFile}</code>
+                </p>
+              )}
             </div>
           )}
         </div>
 
         <details className="clickable-details">
-          <summary>
-            Nodi clickabili ({analysis.clickableNodes.length})
-          </summary>
+          <summary>Nodi clickabili ({analysis.clickableNodes.length})</summary>
           <div className="table-wrap">
             <NodeTable nodes={analysis.clickableNodes} />
           </div>

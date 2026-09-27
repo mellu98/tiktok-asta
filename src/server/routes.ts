@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { listInstalledApps, launchApp } from "../adb/apps";
 import {
   pressKey,
@@ -9,17 +9,26 @@ import {
   sanitizeInputText,
 } from "../adb/commands";
 import { listDevices } from "../adb/devices";
-import { takeScreenshot } from "../adb/screenshots";
 import { AdbError } from "../adb/client";
 import {
-  clickOffer,
   dumpUiHierarchy,
   findCandidateAuctionNodes,
   parseUiHierarchy,
 } from "../adb/auction";
+import { captureAndSave } from "../adb/screenshots";
+import { runRound } from "../auction/engine";
+import {
+  loadConfig,
+  saveConfig,
+  type AuctionConfig,
+} from "../auction/config";
+import { loadSafety, setEmergencyStop } from "../auction/safety";
+import { listAuctions, resetAuction } from "../auction/state";
+import { readJournal } from "../auction/journal";
+import { uiDumpsDir } from "../auction/base-dir";
 import type { DeviceManager } from "../devices/device-manager";
 import { scrcpyLauncher } from "../scrcpy/launcher";
-import type { AuctionAnalysis, ScreenshotResult } from "../shared/types";
+import type { AuctionAnalysis } from "../shared/types";
 import { activityLog } from "./logging";
 import type { WsHub } from "./ws";
 
@@ -28,11 +37,11 @@ import type { WsHub } from "./ws";
  * 1. valida l'input,
  * 2. chiama un servizio del command layer (mai shell sparse),
  * 3. logga l'esito.
+ *
+ * Sicurezza automazione: i tap reali passano SOLO da /auction/round con
+ * mode=live, che applica TUTTE le guardie (estop, dry-run, punteggio,
+ * prezzo, limiti) — fail-closed.
  */
-
-const REPO_ROOT = new URL("../../", import.meta.url);
-const SCREENSHOT_DIR = process.env.POC_SCREENSHOT_DIR ?? "screenshots";
-const UI_DUMP_DIR = process.env.POC_UI_DUMP_DIR ?? "ui-dumps";
 
 function stampNow(): string {
   return new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
@@ -40,17 +49,6 @@ function stampNow(): string {
 
 function safeSerial(serial: string): string {
   return serial.replace(/[^A-Za-z0-9._-]/g, "_");
-}
-
-async function saveScreenshot(serial: string): Promise<ScreenshotResult> {
-  const png = await takeScreenshot(serial);
-  mkdirSync(SCREENSHOT_DIR, { recursive: true });
-  const file = `${SCREENSHOT_DIR}/screen_${safeSerial(serial)}_${stampNow()}.png`;
-  writeFileSync(file, png);
-  return {
-    file,
-    dataUrl: `data:image/png;base64,${png.toString("base64")}`,
-  };
 }
 
 interface Deps {
@@ -94,7 +92,7 @@ export function buildRouter(deps: Deps): Router {
   router.post("/devices/:serial/screenshot", async (req, res) => {
     try {
       const serial = requireSerial(req);
-      const result = await saveScreenshot(serial);
+      const result = await captureAndSave(serial);
       activityLog.add("success", "adb", `Screenshot salvato: ${result.file}`);
       ok(res, result);
     } catch (err) {
@@ -102,7 +100,7 @@ export function buildRouter(deps: Deps): Router {
     }
   });
 
-  // ── Diagnostica asta TikTok (uiautomator) ─────────────────────────────────
+  // ── Diagnostica asta TikTok (uiautomator, sola lettura) ───────────────────
   router.post("/devices/:serial/auction/analyze", async (req, res) => {
     try {
       const serial = requireSerial(req);
@@ -110,11 +108,12 @@ export function buildRouter(deps: Deps): Router {
       const nodes = parseUiHierarchy(xml);
       const matches = findCandidateAuctionNodes(nodes);
 
-      mkdirSync(UI_DUMP_DIR, { recursive: true });
-      const xmlFile = `${UI_DUMP_DIR}/window_${safeSerial(serial)}_${stampNow()}.xml`;
+      const { mkdirSync } = await import("node:fs");
+      mkdirSync(uiDumpsDir(), { recursive: true });
+      const xmlFile = `${uiDumpsDir()}/window_${safeSerial(serial)}_${stampNow()}.xml`;
       writeFileSync(xmlFile, xml, "utf8");
 
-      const screenshot = await saveScreenshot(serial);
+      const screenshot = await captureAndSave(serial);
 
       let width = 0;
       let height = 0;
@@ -142,32 +141,94 @@ export function buildRouter(deps: Deps): Router {
     }
   });
 
-  router.post("/devices/:serial/auction/click-offer", async (req, res) => {
+  // ── Automazione asta: configurazione e sicurezza ──────────────────────────
+  router.get("/auction/state", (_req, res) => {
+    ok(res, {
+      config: loadConfig(),
+      safety: loadSafety(),
+      auctions: listAuctions(),
+    });
+  });
+
+  router.put("/auction/config", (req, res) => {
+    try {
+      const patch = (req.body ?? {}) as Partial<AuctionConfig>;
+      const config = saveConfig(patch);
+      activityLog.add(
+        "info",
+        "server",
+        `Configurazione asta aggiornata: maxBid=${config.maxBidEur}€, maxOffers=${config.maxOffersPerAuction}, soglia=${config.confidenceThreshold}, dryRun=${config.dryRun}`,
+      );
+      ok(res, { config });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  router.post("/auction/estop", (req, res) => {
+    try {
+      const engaged = (req.body as { engaged?: boolean } | undefined)?.engaged === true;
+      const reason =
+        (req.body as { reason?: string } | undefined)?.reason ?? null;
+      const safety = setEmergencyStop(engaged, reason);
+      activityLog.add(
+        engaged ? "error" : "success",
+        "server",
+        engaged
+          ? "ARRESTO DI EMERGENZA ATTIVATO — tap reali bloccati"
+          : "Arresto di emergenza disarmato: tap reali abilitati",
+      );
+      ok(res, { safety });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  router.post("/auction/reset", (req, res) => {
+    try {
+      const auctionId =
+        (req.body as { auctionId?: string } | undefined)?.auctionId ?? null;
+      resetAuction(auctionId);
+      activityLog.add(
+        "info",
+        "server",
+        auctionId
+          ? `Contatore azzerrato per asta ${auctionId}`
+          : "Contatori azzerrati per tutte le aste",
+      );
+      ok(res, { auctions: listAuctions() });
+    } catch (err) {
+      fail(res, err);
+    }
+  });
+
+  router.get("/auction/journal", (req, res) => {
+    const limit = Math.min(
+      500,
+      Math.max(1, Number(req.query.limit) || 50),
+    );
+    ok(res, readJournal(limit));
+  });
+
+  // ── Automazione asta: round (valutazione / dry / live) ────────────────────
+  router.post("/devices/:serial/auction/round", async (req, res) => {
     try {
       const serial = requireSerial(req);
-      const dryRun = (req.body as { dryRun?: boolean } | undefined)?.dryRun !== false;
-      const result = await clickOffer(serial, { dryRun });
-      if (result.status === "tapped") {
-        result.screenshotAfter = await saveScreenshot(serial);
-        const changed = result.before?.signature !== result.after?.signature;
-        activityLog.add(
-          changed ? "success" : "warn",
-          "input",
-          `Tap Offri a (${result.center?.x}, ${result.center?.y}) — UI ${changed ? "CAMBIATA" : "INVARIATA"} dopo il tap`,
-        );
-      } else if (result.status === "dry-run") {
-        activityLog.add(
-          "success",
-          "input",
-          `DRY RUN Offri → (${result.center?.x}, ${result.center?.y}) via ${result.node?.resourceId || result.node?.className || "nodo"}`,
-        );
-      } else {
-        activityLog.add(
-          "warn",
-          "input",
-          `Pulsante Offri ${result.status === "not-found" ? "NON trovato" : "ambiguo"} nell'albero UI`,
-        );
+      const mode = String(
+        (req.body as { mode?: string } | undefined)?.mode ?? "evaluate",
+      );
+      if (mode !== "evaluate" && mode !== "dry" && mode !== "live") {
+        throw new Error(`Modalità non valida: ${mode}`);
       }
+      const result = await runRound(serial, mode);
+      activityLog.add(
+        result.decision === "offer" ? "success" : "info",
+        "server",
+        `Round ${mode} su ${serial}: ${result.decision} — ${result.reason}` +
+          (result.timings
+            ? ` [dump ${result.timings.dumpMs}ms, parse ${result.timings.parseMs}ms, decide ${result.timings.decideMs}ms${result.timings.tapMs !== null ? `, tap ${result.timings.tapMs}ms` : ""}]`
+            : ""),
+      );
       ok(res, result);
     } catch (err) {
       fail(res, err);
@@ -341,7 +402,5 @@ export function buildRouter(deps: Deps): Router {
     ok(res, activityLog.list(200));
   });
 
-  // Riferimento per il server: usato per broadcast iniziale
-  void REPO_ROOT;
   return router;
 }

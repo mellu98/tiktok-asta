@@ -1,36 +1,90 @@
 import type {
   AuctionAnalysis,
-  ClickOfferResult,
+  AuctionConfig,
   HardwareKey,
+  JournalEntry,
   LogEntry,
+  RoundResult,
   ScreenshotResult,
 } from "../../src/shared/types";
 
 /**
- * Client REST verso il server locale. Tutti gli errori diventano Error con messaggio italiano.
+ * Client verso il server interno.
  *
- * Base URL:
- * - dev (`npm run dev`) e `npm start`: stesso origine → path relativi (Vite proxy / server statico)
- * - app Tauri (webview su tauri://): il server sidecar è su 127.0.0.1:5175 → URL assoluti
+ * Bootstrap sessione:
+ * - dev (`npm run dev`) e `npm start`: stesso origine (Vite proxy / server statico)
+ * - app Tauri (webview su tauri://): porta dinamica + token via comando IPC
+ *   `session_info` (il server verifica il token su ogni richiesta)
  */
-const SAME_ORIGIN =
-  typeof window !== "undefined" && window.location.protocol.startsWith("http");
 
-const DEV_WS_PROTO =
-  typeof window !== "undefined" && window.location.protocol === "https:"
-    ? "wss:"
-    : "ws:";
+interface SessionInfo {
+  port: number;
+  token: string | null;
+}
 
-export const SERVER_HTTP = SAME_ORIGIN ? "" : "http://127.0.0.1:5175";
-export const SERVER_WS = SAME_ORIGIN
-  ? `${DEV_WS_PROTO}//${window.location.host}/ws`
-  : "ws://127.0.0.1:5175/ws";
+// Mutabili: rilevati una sola volta via IPC Tauri (porta dinamica + token).
+// Accesso via getter (niente export mutabili).
+let SERVER_HTTP = "";
+let SERVER_WS = "";
+let TOKEN: string | null = null;
+let sessionPromise: Promise<void> | null = null;
+
+export function serverHttp(): string {
+  return SERVER_HTTP;
+}
+
+export function serverWs(): string {
+  return SERVER_WS;
+}
+
+export function currentServerHttp(): string {
+  return SERVER_HTTP;
+}
+
+async function detectSession(): Promise<void> {
+  // SAFETY: `window.__TAURI__` esiste solo quando tauri.conf ha
+  // withGlobalTauri=true; l'assenza implica modalità browser/dev.
+  const w = window as unknown as {
+    __TAURI__?: {
+      core?: {
+        invoke?: (cmd: string) => Promise<SessionInfo>;
+      };
+    };
+  };
+  const invoke = w.__TAURI__?.core?.invoke;
+  if (invoke) {
+    const s = await invoke("session_info");
+    SERVER_HTTP = `http://127.0.0.1:${s.port}`;
+    SERVER_WS = `ws://127.0.0.1:${s.port}/ws?token=${encodeURIComponent(s.token ?? "")}`;
+    TOKEN = s.token;
+    return;
+  }
+  // Browser/dev: stesso origine, il Vite proxy gestisce /api e /ws
+  SERVER_HTTP = "";
+  SERVER_WS = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`;
+  TOKEN = null;
+}
+
+/** Risolve porta+token una sola volta; in caso di errore permette il retry. */
+export function ensureSession(): Promise<void> {
+  if (!sessionPromise) {
+    sessionPromise = detectSession().catch((err) => {
+      sessionPromise = null;
+      throw err;
+    });
+  }
+  return sessionPromise;
+}
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  await ensureSession();
   let res: Response;
   try {
     res = await fetch(`${SERVER_HTTP}${path}`, {
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(TOKEN ? { "x-session-token": TOKEN } : {}),
+      },
       ...init,
     });
   } catch {
@@ -58,9 +112,7 @@ export const Api = {
   screenshot: (serial: string) =>
     api<ScreenshotResult>(
       `/api/devices/${encodeURIComponent(serial)}/screenshot`,
-      {
-        method: "POST",
-      },
+      { method: "POST" },
     ),
   apps: (serial: string) =>
     api<{ packages: string[] }>(
@@ -74,58 +126,64 @@ export const Api = {
   scrcpyStart: (serial: string) =>
     api<{ started: boolean }>(
       `/api/devices/${encodeURIComponent(serial)}/scrcpy/start`,
-      {
-        method: "POST",
-      },
+      { method: "POST" },
     ),
-  adbRestart: () =>
-    api<{ restarted: boolean }>("/api/adb/restart", { method: "POST" }),
+  adbRestart: () => api<{ restarted: boolean }>("/api/adb/restart", { method: "POST" }),
   tap: (serial: string, x: number, y: number) =>
-    api<{ done: boolean }>(
-      `/api/devices/${encodeURIComponent(serial)}/input/tap`,
-      {
-        method: "POST",
-        body: JSON.stringify({ x, y }),
-      },
-    ),
+    api<{ done: boolean }>(`/api/devices/${encodeURIComponent(serial)}/input/tap`, {
+      method: "POST",
+      body: JSON.stringify({ x, y }),
+    }),
   swipe: (
     serial: string,
     v: { x1: number; y1: number; x2: number; y2: number; durationMs: number },
   ) =>
-    api<{ done: boolean }>(
-      `/api/devices/${encodeURIComponent(serial)}/input/swipe`,
-      {
-        method: "POST",
-        body: JSON.stringify(v),
-      },
-    ),
+    api<{ done: boolean }>(`/api/devices/${encodeURIComponent(serial)}/input/swipe`, {
+      method: "POST",
+      body: JSON.stringify(v),
+    }),
   text: (serial: string, text: string) =>
-    api<{ sent: string }>(
-      `/api/devices/${encodeURIComponent(serial)}/input/text`,
-      {
-        method: "POST",
-        body: JSON.stringify({ text }),
-      },
-    ),
+    api<{ sent: string }>(`/api/devices/${encodeURIComponent(serial)}/input/text`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
   key: (serial: string, key: HardwareKey) =>
-    api<{ done: boolean }>(
-      `/api/devices/${encodeURIComponent(serial)}/input/key`,
-      {
-        method: "POST",
-        body: JSON.stringify({ key }),
-      },
-    ),
+    api<{ done: boolean }>(`/api/devices/${encodeURIComponent(serial)}/input/key`, {
+      method: "POST",
+      body: JSON.stringify({ key }),
+    }),
+
+  // ── Automazione asta ────────────────────────────────────────────────────
   auctionAnalyze: (serial: string) =>
     api<AuctionAnalysis>(
       `/api/devices/${encodeURIComponent(serial)}/auction/analyze`,
       { method: "POST" },
     ),
-  clickOffer: (serial: string, dryRun: boolean) =>
-    api<ClickOfferResult>(
-      `/api/devices/${encodeURIComponent(serial)}/auction/click-offer`,
-      {
-        method: "POST",
-        body: JSON.stringify({ dryRun }),
-      },
-    ),
+  round: (serial: string, mode: "evaluate" | "dry" | "live") =>
+    api<RoundResult>(`/api/devices/${encodeURIComponent(serial)}/auction/round`, {
+      method: "POST",
+      body: JSON.stringify({ mode }),
+    }),
+  auctionState: () =>
+    api<{
+      config: AuctionConfig;
+      safety: { estopEngaged: boolean; reason: string | null };
+      auctions: { auctionId: string; offersSpent: number }[];
+    }>("/api/auction/state"),
+  saveAuctionConfig: (patch: Partial<AuctionConfig>) =>
+    api<{ config: AuctionConfig }>("/api/auction/config", {
+      method: "PUT",
+      body: JSON.stringify(patch),
+    }),
+  setEstop: (engaged: boolean) =>
+    api<{ safety: unknown }>("/api/auction/estop", {
+      method: "POST",
+      body: JSON.stringify({ engaged }),
+    }),
+  resetAuction: (auctionId: string | null) =>
+    api<{ auctions: unknown[] }>("/api/auction/reset", {
+      method: "POST",
+      body: JSON.stringify({ auctionId }),
+    }),
+  journal: (limit = 30) => api<JournalEntry[]>(`/api/auction/journal?limit=${limit}`),
 };
